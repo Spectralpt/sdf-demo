@@ -3,6 +3,7 @@
 layout(location = 0) out vec4 fragColor;
 
 uniform vec2 u_resolution;
+uniform vec2 u_mouse;
 
 const float FOV = 1.0;
 const int MAX_STEPS = 256;
@@ -860,13 +861,18 @@ vec3 getLight(vec3 p, vec3 rd, vec3 color) {
   vec3 lightPos = vec3(20.0, 40.0, -30.0);
   vec3 L = normalize(lightPos - p);
   vec3 N = getNormal(p);
+  vec3 V = -rd;
+  vec3 R = reflect(-L, N);
 
+  vec3 specColor = vec3(0.5);
+  vec3 specular = specColor * pow(clamp(dot(R, V), 0.0, 1.0), 10.0);
   vec3 diffuse = color * clamp(dot(L, N), 0.0, 1.0);
+  vec3 ambient = color * 0.05;
 
   //shadows
   float d = rayMarch(p + N * 0.02, normalize(lightPos)).x;
-  if (d < length(lightPos - p)) return vec3(0);
-  return diffuse;
+  if (d < length(lightPos - p)) return ambient;
+  return diffuse + ambient + specular;
 }
 
 vec3 getMaterial(vec3 p, float id) {
@@ -882,16 +888,36 @@ vec3 getMaterial(vec3 p, float id) {
   return m;
 }
 
+mat3 getCam(vec3 ro, vec3 lookAt) {
+  vec3 camF = normalize(vec3(lookAt - ro));
+  vec3 camR = normalize(cross(vec3(0, 1, 0), camF));
+  vec3 camU = cross(camF, camR);
+  return mat3(camR, camU, camF);
+}
+
+void mouseControl(inout vec3 ro) {
+  vec2 m = u_mouse / u_resolution;
+  pR(ro.yz, m.y * PI * 0.5 - 0.5);
+  pR(ro.xz, m.x * TAU);
+}
+
 void render(inout vec3 col, in vec2 uv) {
-  vec3 ro = vec3(0.0, 0.0, -3.0);
-  vec3 rd = normalize(vec3(uv, FOV));
+  vec3 ro = vec3(3.0, 3.0, -3.0);
+  mouseControl(ro);
+  vec3 lookAt = vec3(0, 0, 0);
+  vec3 rd = getCam(ro, lookAt) * normalize(vec3(uv, FOV));
 
   vec2 object = rayMarch(ro, rd);
 
+  vec3 background = vec3(0.5, 0.8, 0.9);
   if (object.x < MAX_DIST) {
     vec3 p = ro + object.x * rd;
     vec3 material = getMaterial(p, object.y);
     col += getLight(p, rd, material);
+
+    col = mix(col, background, 1.0 - exp(-0.0008 * object.x * object.x));
+  } else {
+    col += background - max(0.95 * rd.y, 0.0);
   }
 }
 

@@ -1,0 +1,44 @@
+use imgui with the c bindings thing
+
+The Workflow:
+
+    Initialize ImGui after your GLFW window is created.
+
+    In your while loop, after gl.Clear(), call ImGui_NewFrame().
+
+    Define your UI (e.g., if (igButton("Reload Shader", ...)) { reload(); }).
+
+    Call ImGui::Render() and ImGui_ImplOpenGL3_RenderDrawData() right before glfw.SwapBuffers.
+
+-------This could be cool
+2. The "Hot Reload" Strategy
+
+If you want the shader to change automatically when you save the file in your editor (without clicking a button), you need a File Watcher.
+
+    The Logic: Use a background thread or a simple timer to check the mtime (modified time) of your sphere-scene.frag.
+
+    Zig implementation: You can use std.fs.File.stat() to check if the file has been updated.
+
+    Seamless Swap: When a change is detected:
+
+        Compile the new fragment shader.
+
+        If compilation succeeds, gl.DeleteProgram the old one and link the new one.
+
+        If it fails, print the error to the console and keep the old shader running (so the app doesn't crash).
+
+
+---------- maybe 
+const Scene = struct {
+    program: u32,
+    file_path: []const u8,
+    last_modified: i128,
+
+    fn update(self: *Scene, allocator: std.mem.Allocator) !void {
+        // Check file stat, recompile if changed
+    }
+    
+    fn bind(self: Scene) void {
+        gl.UseProgram(self.program);
+    }
+};

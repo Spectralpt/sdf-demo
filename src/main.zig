@@ -65,7 +65,7 @@ pub fn main() !void {
 
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
     defer allocator.free(vert_source);
-    const frag_source = try shaders.readFileToString(allocator, "shaders/shader.frag");
+    const frag_source = try shaders.readFileToString(allocator, "shaders/sphere-scene.frag");
     defer allocator.free(frag_source);
 
     const vert = try shaders.compileShader(allocator, vert_source, gl.VERTEX_SHADER);
@@ -85,6 +85,14 @@ pub fn main() !void {
         gl.UseProgram(program);
         const uniform_window_size = gl.GetUniformLocation(program, "u_resolution");
         gl.Uniform2f(uniform_window_size, width, height);
+
+        var mouse_x: f64 = undefined;
+        var mouse_y: f64 = undefined;
+        glfw.GetCursorPos(window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
+        // std.debug.print("x:{any};y:{any}", .{ mouse_x, mouse_y });
+        const uniform_mouse_pos = gl.GetUniformLocation(program, "u_mouse");
+        gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
+
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
 

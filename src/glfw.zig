@@ -12,6 +12,7 @@ pub const PollEvents = c.glfwPollEvents;
 pub const SwapBuffers = c.glfwSwapBuffers;
 pub const GetProcAddress = c.glfwGetProcAddress;
 pub const WindowHint = c.glfwWindowHint;
+pub const GetCursorPos = c.glfwGetCursorPos;
 
 pub const RESIZABLE = c.GLFW_RESIZABLE;
 pub const FLOATING = c.GLFW_FLOATING;
