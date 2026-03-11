@@ -4,6 +4,7 @@ layout(location = 0) out vec4 fragColor;
 
 uniform vec2 u_resolution;
 uniform vec2 u_mouse;
+uniform float u_time; 
 
 const float FOV = 1.0;
 const int MAX_STEPS = 256;
@@ -192,11 +193,14 @@ const float EPSILON = 0.001;
 
 // Sign function that doesn't return 0
 float sgn(float x) {
-  return (x < 0.0) ? -1.0 : 1.0;
+    return (x < 0.0) ? -1.0 : 1.0;
 }
 
 vec2 sgn(vec2 v) {
-  return vec2((v.x < 0) ? -1 : 1, (v.y < 0) ? -1 : 1);
+    return vec2(
+        (v.x < 0.0) ? -1.0 : 1.0,
+        (v.y < 0.0) ? -1.0 : 1.0
+    );
 }
 
 float square(float x) {
@@ -827,17 +831,68 @@ vec2 fOpUnionID(vec2 res1, vec2 res2) {
 }
 
 vec2 map(vec3 p) {
-  float planeDist = fPlane(p, vec3(0, 1, 0), 1.0);
-  float planeID = 2.0;
-  vec2 plane = vec2(planeDist, planeID);
+    // 1. Chão com efeito de "água" digital (ondulação suave com o tempo)
+    float chaoDist = p.y + 2.5 + sin(p.x * 2.0 + u_time) * 0.05 + cos(p.z * 2.0 + u_time) * 0.05;
+    vec2 chao = vec2(chaoDist, 1.0); // ID 1
 
-  float sphereDist = fSphere(p, 1.0);
-  float sphereID = 1.0;
-  vec2 sphere = vec2(sphereDist, sphereID);
+    // 2. O Artefacto Mutante Central
+    vec3 q = p;
+    
+    // Fazer a forma levitar para cima e para baixo
+    q.y -= sin(u_time * 1.5) * 0.5;
 
-  //result
-  vec2 res = fOpUnionID(sphere, plane);
-  return res;
+    // Rodar a forma lentamente em vários eixos
+    pR(q.xz, u_time * 0.4);
+    pR(q.xy, u_time * 0.2);
+
+    // Começamos com um cubo sólido
+    float artefacto = fBox(q, vec3(1.2));
+
+    // Vamos usar um loop para subtrair 4 esferas dinâmicas a este cubo
+    // A função fOpDifferenceRound corta pedaços arredondados (efeito de líquido)
+    for(int i = 0; i < 4; i++) {
+        vec3 pEsfera = q;
+        float fi = float(i);
+        
+        // Cada "esfera cortadora" roda num eixo e velocidade diferente
+        pR(pEsfera.xy, u_time * (0.5 + fi * 0.2));
+        pR(pEsfera.xz, u_time * (0.3 + fi * 0.3));
+        
+        // Desviamos a esfera do centro para a borda do cubo
+        pEsfera.x -= 1.3;
+        
+        // O raio da esfera aumenta e diminui
+        float raioEsfera = 0.7 + sin(u_time * 2.0 + fi) * 0.2;
+        float esfera = fSphere(pEsfera, raioEsfera);
+        
+        // Esculpir o cubo de forma suave! O último valor (0.3) é o raio de suavização.
+        artefacto = fOpDifferenceRound(artefacto, esfera, 0.3);
+    }
+
+    // Colocar um octaedro pulsar no centro exato para preencher caso o cubo seja muito comido
+    float nucleo = fOctahedron(q, 0.4 + sin(u_time * 4.0) * 0.1);
+    artefacto = fOpUnionRound(artefacto, nucleo, 0.2);
+
+    vec2 formaMutante = vec2(artefacto, 2.0); // ID 2
+
+    // 3. Anéis de contenção a orbitar o artefacto
+    vec3 pAnel = p;
+    pAnel.y -= sin(u_time * 1.5) * 0.5; // Fazemos os anéis levitar com a forma
+    pR(pAnel.xz, -u_time * 0.8);        // Rodam na direção oposta
+    pR(pAnel.xy, 1.57);                 // Deitar os anéis
+    
+    float anel1 = fTorus(pAnel, 0.04, 2.2);
+    
+    pR(pAnel.yz, u_time * 1.5);
+    float anel2 = fTorus(pAnel, 0.02, 2.6);
+
+    vec2 aneis = vec2(min(anel1, anel2), 3.0); // ID 3
+
+    // 4. Juntar tudo
+    vec2 res = fOpUnionID(chao, formaMutante);
+    res = fOpUnionID(res, aneis);
+
+    return res;
 }
 
 vec2 rayMarch(vec3 ro, vec3 rd) {
@@ -877,16 +932,24 @@ vec3 getLight(vec3 p, vec3 rd, vec3 color) {
 }
 
 vec3 getMaterial(vec3 p, float id) {
-  vec3 m;
-  switch (int(id)) {
-    case 1:
-    m = vec3(0.9, 0.0, 0.0);
-    break;
-    case 2:
-    m = vec3(0.2 + 0.4 * mod(floor(p.x) + floor(p.z), 2.0));
-    break;
-  }
-  return m;
+    vec3 m;
+    switch (int(id)) {
+        case 1:
+            // Chão: Linhas finas cibernéticas verdes/azuis
+            float linhaX = step(0.96, fract(p.x * 2.0));
+            float linhaZ = step(0.96, fract(p.z * 2.0));
+            m = vec3(0.02, 0.05, 0.05) + max(linhaX, linhaZ) * vec3(0.0, 0.6, 0.5);
+            break;
+        case 2:
+            // Artefacto Mutante: Ouro maciço a atirar para o laranja brilhante
+            m = vec3(1.0, 0.7, 0.1);
+            break;
+        case 3:
+            // Anéis: Branco/Ciano muito brilhante (quase luz pura)
+            m = vec3(0.8, 1.0, 1.0);
+            break;
+    }
+    return m;
 }
 
 mat3 getCam(vec3 ro, vec3 lookAt) {

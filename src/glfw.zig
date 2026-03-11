@@ -13,7 +13,11 @@ pub const SwapBuffers = c.glfwSwapBuffers;
 pub const GetProcAddress = c.glfwGetProcAddress;
 pub const WindowHint = c.glfwWindowHint;
 pub const GetCursorPos = c.glfwGetCursorPos;
+pub const GetKey = c.glfwGetKey;
+pub const GetTime = c.glfwGetTime;
 
+pub const KEY_SPACE = c.GLFW_KEY_SPACE;
+pub const PRESS = c.GLFW_PRESS;
 pub const RESIZABLE = c.GLFW_RESIZABLE;
 pub const FLOATING = c.GLFW_FLOATING;
 pub const VISIBLE = c.GLFW_VISIBLE;

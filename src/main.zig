@@ -84,7 +84,7 @@ pub fn main() !void {
     defer allocator.free(vert_source);
     const vert = try shaders.compileShader(allocator, vert_source, gl.VERTEX_SHADER);
 
-    const frag_paths = [_][:0]const u8{ "shaders/sphere-scene.frag", "shaders/shader.frag" };
+    const frag_paths = [_][:0]const u8{ "shaders/sphere-scene.frag", "shaders/shader.frag", "shaders/scene2.frag", "shaders/scene3.frag" };
     var programs: [frag_paths.len]u32 = undefined;
 
     for (frag_paths, 0..) |path, i| {

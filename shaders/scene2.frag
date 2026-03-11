@@ -4,6 +4,7 @@ layout(location = 0) out vec4 fragColor;
 
 uniform vec2 u_resolution;
 uniform vec2 u_mouse;
+uniform float u_time; 
 
 const float FOV = 1.0;
 const int MAX_STEPS = 256;
@@ -192,11 +193,14 @@ const float EPSILON = 0.001;
 
 // Sign function that doesn't return 0
 float sgn(float x) {
-  return (x < 0.0) ? -1.0 : 1.0;
+    return (x < 0.0) ? -1.0 : 1.0;
 }
 
 vec2 sgn(vec2 v) {
-  return vec2((v.x < 0) ? -1 : 1, (v.y < 0) ? -1 : 1);
+    return vec2(
+        (v.x < 0.0) ? -1.0 : 1.0,
+        (v.y < 0.0) ? -1.0 : 1.0
+    );
 }
 
 float square(float x) {
@@ -827,16 +831,40 @@ vec2 fOpUnionID(vec2 res1, vec2 res2) {
 }
 
 vec2 map(vec3 p) {
-  float planeDist = fPlane(p, vec3(0, 1, 0), 1.0);
-  float planeID = 2.0;
-  vec2 plane = vec2(planeDist, planeID);
+  // A. CHÃO ONDULADO
+  // O chão move-se com o tempo (u_time) criando ondas suaves
+  float chaoDist = p.y + 3.0 + sin(p.x * 1.5 + u_time) * 0.1 + cos(p.z * 1.5 + u_time) * 0.1;
+  vec2 chao = vec2(chaoDist, 1.0); // ID 1
 
-  float sphereDist = fSphere(p, 1.0);
-  float sphereID = 1.0;
-  vec2 sphere = vec2(sphereDist, sphereID);
+  // B. REPETIÇÃO INFINITA
+  vec3 q = p; // Copiamos a posição para não afetar o chão
+  // A função pMod2 repete o espaço em X e Z a cada 8 unidades. 
+  // Retorna a "coordenada" (cell) da célula em que estamos.
+  vec2 cell = pMod2(q.xz, vec2(8.0, 8.0)); 
 
-  //result
-  vec2 res = fOpUnionID(sphere, plane);
+  // C. ANIMAÇÃO INDIVIDUAL
+  // Usamos a posição da célula (cell.x, cell.y) para que cada objeto rode de forma diferente
+  pR(q.xy, u_time * 0.5 + cell.x); 
+  pR(q.xz, u_time * 0.3 + cell.y);
+
+  // D. CRIAR UMA FORMA COMPLEXA (Cubo cortado por uma Esfera)
+  float cubo = fBox(q, vec3(1.5));
+  float esferaCorte = fSphere(q, 1.9);
+  
+  // fOpDifferenceRound subtrai a esfera ao cubo, arredondando as bordas
+  float estruturaDist = fOpDifferenceRound(cubo, esferaCorte, 0.2);
+  vec2 estrutura = vec2(estruturaDist, 2.0); // ID 2
+
+  // E. NÚCLEO FLUTUANTE
+  // Uma esfera no centro que "respira" (aumenta e diminui o raio com o seno do tempo)
+  float raioNucleo = 0.5 + sin(u_time * 4.0 + cell.x) * 0.15;
+  float nucleoDist = fSphere(q, raioNucleo); 
+  vec2 nucleo = vec2(nucleoDist, 3.0); // ID 3
+
+  // F. JUNTAR TUDO
+  vec2 res = fOpUnionID(chao, estrutura);
+  res = fOpUnionID(res, nucleo);
+
   return res;
 }
 
@@ -880,11 +908,18 @@ vec3 getMaterial(vec3 p, float id) {
   vec3 m;
   switch (int(id)) {
     case 1:
-    m = vec3(0.9, 0.0, 0.0);
-    break;
+      // Chão com padrão de grelha estilo "Tron"
+      float grelha = mod(floor(p.x * 2.0) + floor(p.z * 2.0), 2.0);
+      m = vec3(0.02, 0.02, 0.05) + grelha * vec3(0.0, 0.1, 0.2);
+      break;
     case 2:
-    m = vec3(0.2 + 0.4 * mod(floor(p.x) + floor(p.z), 2.0));
-    break;
+      // Estrutura exterior (Cinzento metálico escuro)
+      m = vec3(0.2, 0.2, 0.25);
+      break;
+    case 3:
+      // Núcleo brilhante (Ciano)
+      m = vec3(0.0, 0.8, 1.0);
+      break;
   }
   return m;
 }
