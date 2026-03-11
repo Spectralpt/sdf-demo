@@ -6,6 +6,14 @@
             .url = "git+https://github.com/castholm/zigglgen.git#6b21369ac50de8826f8af60a7edb33693b4ec7bf",
             .hash = "zigglgen-0.5.0-zigglr_CLwBs1aABtYVtxNPo1SB8AzgKMVouoqULqkDQ",
         },
+        .zgui = .{
+            .url = "git+https://github.com/zig-gamedev/zgui#d6c4f53c2fbd54673790dc2a5208160a3586ef29",
+            .hash = "zgui-0.6.0-dev--L6sZCJKbgBZGCzVMcwD0bNGmpK6yO-UoIESHX5JiRet",
+        },
+        .cimgui_zig = .{
+            .url = "git+https://github.com/tiawl/cimgui.zig#e003a2da6e254e668e4a187a7e164400344b3544",
+            .hash = "cimgui_zig-1.0.0-2XubkqYvvgDujmzkmWCyAmvYMNufv1jF7ACzzZEJvK4Q",
+        },
     },
     .paths = .{""},
     .fingerprint = 0xabec950d1be8b51d,

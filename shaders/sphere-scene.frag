@@ -834,6 +834,7 @@ vec2 map(vec3 p) {
   float sphereDist = fSphere(p, 1.0);
   float sphereID = 1.0;
   vec2 sphere = vec2(sphereDist, sphereID);
+
   //result
   vec2 res = fOpUnionID(sphere, plane);
   return res;

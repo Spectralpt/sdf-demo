@@ -1,4 +1,7 @@
 const std = @import("std");
+const cimgui = @import("cimgui_zig");
+const Renderer = cimgui.Renderer;
+const Platform = cimgui.Platform;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -16,6 +19,19 @@ pub fn build(b: *std.Build) void {
         .profile = .core,
         .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive },
     });
+    const cimgui_dep = b.dependency("cimgui_zig", .{
+        .target = target,
+        .optimize = optimize,
+        .platforms = &[_]Platform{.GLFW},
+        .renderers = &[_]Renderer{.OpenGL3},
+    });
+
+    const cimgui_lib = cimgui_dep.artifact("cimgui");
+
+    // The following conditional is only necessary for OpenGL backends:
+    if (cimgui_lib.root_module.import_table.get("gl")) |gl_module| {
+        exe_mod.addImport("gl", gl_module);
+    }
 
     exe_mod.addImport("gl", gl_bindings);
 
@@ -25,6 +41,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkSystemLibrary("glfw3");
+    exe.linkLibrary(cimgui_lib);
     exe.linkLibC();
 
     b.installArtifact(exe);
