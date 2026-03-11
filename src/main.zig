@@ -158,6 +158,10 @@ pub fn main() !void {
         const uniform_mouse_pos = gl.GetUniformLocation(programs[@intCast(current_item)], "u_mouse");
         gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
 
+        const current_time: f64 = c.glfwGetTime();
+        const uniform_time = gl.GetUniformLocation(programs[@intCast(current_item)], "u_time");
+        gl.Uniform1f(uniform_time, @floatCast(current_time));
+
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
         //--------
