@@ -14,6 +14,10 @@
             .url = "git+https://github.com/tiawl/cimgui.zig#e003a2da6e254e668e4a187a7e164400344b3544",
             .hash = "cimgui_zig-1.0.0-2XubkqYvvgDujmzkmWCyAmvYMNufv1jF7ACzzZEJvK4Q",
         },
+        .zstbi = .{
+            .url = "git+https://github.com/zig-gamedev/zstbi#664305dd52640be15cbebd7cd73d1199679933e1",
+            .hash = "zstbi-0.11.0-dev-L0Ea_2yVBwA4uh-tHfgdhZcQaWRoZVYlNGs4Dl_WTeuR",
+        },
     },
     .paths = .{""},
     .fingerprint = 0xabec950d1be8b51d,

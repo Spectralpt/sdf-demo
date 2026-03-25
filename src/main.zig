@@ -1,6 +1,7 @@
 const gl = @import("gl");
 const shaders = @import("shaders.zig");
 const std = @import("std");
+const zstbi = @import("zstbi");
 // const Scene = @import("scene.zig");
 
 const c = @cImport({
@@ -17,6 +18,10 @@ fn errorCallback(errn: c_int, str: [*c]const u8) callconv(std.builtin.CallingCon
 
 pub fn main() !void {
     var procs: gl.ProcTable = undefined;
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
     _ = c.glfwSetErrorCallback(errorCallback);
 
@@ -76,15 +81,60 @@ pub fn main() !void {
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
     gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @sizeOf(u32) * indices.len, &indices, gl.STATIC_DRAW);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    // Textures
+    zstbi.init(allocator);
+    defer zstbi.deinit();
+
+    var textures: [5]u32 = undefined;
+    gl.GenTextures(5, @ptrCast(&textures));
+
+    const texture_paths = [_][:0]const u8{
+        "textures/green_marble1.png",
+        "textures/green_marble1_bump.png",
+        "textures/texture3.jpg",
+        "textures/white_marble1.png",
+        "textures/height3.png",
+    };
+
+    for (texture_paths, 0..) |path, i| {
+        var image = try zstbi.Image.loadFromFile(path, 0);
+        defer image.deinit();
+
+        gl.BindTexture(gl.TEXTURE_2D, textures[i]);
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        const fmt: u32 = if (image.num_components == 4) gl.RGBA else gl.RGB;
+        gl.TexImage2D(
+            gl.TEXTURE_2D,
+            0,
+            @intCast(fmt),
+            @intCast(image.width),
+            @intCast(image.height),
+            0,
+            fmt,
+            gl.UNSIGNED_BYTE,
+            image.data.ptr,
+        );
+        gl.GenerateMipmap(gl.TEXTURE_2D);
+    }
 
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
     defer allocator.free(vert_source);
     const vert = try shaders.compileShader(allocator, vert_source, gl.VERTEX_SHADER);
 
-    const frag_paths = [_][:0]const u8{ "shaders/sphere-scene.frag", "shaders/shader.frag", "shaders/scene2.frag", "shaders/scene3.frag" };
+    const frag_paths = [_][:0]const u8{
+        "shaders/simple-scene.frag", //
+        "shaders/2d-demo.frag", //
+        "shaders/raymarching.frag",
+        "shaders/primitives.frag",
+        "shaders/sphere-scene.frag",
+        "shaders/sphere-zoom.frag",
+        "shaders/scene2.frag",
+        "shaders/scene3.frag",
+    };
     var programs: [frag_paths.len]u32 = undefined;
 
     for (frag_paths, 0..) |path, i| {
@@ -161,6 +211,27 @@ pub fn main() !void {
         const current_time: f64 = c.glfwGetTime();
         const uniform_time = gl.GetUniformLocation(programs[@intCast(current_item)], "u_time");
         gl.Uniform1f(uniform_time, @floatCast(current_time));
+
+        gl.ActiveTexture(gl.TEXTURE0);
+        gl.BindTexture(gl.TEXTURE_2D, textures[0]);
+        const uniform_tex = gl.GetUniformLocation(programs[@intCast(current_item)], "u_greenMarble");
+        gl.Uniform1i(uniform_tex, 0);
+
+        gl.ActiveTexture(gl.TEXTURE1);
+        gl.BindTexture(gl.TEXTURE_2D, textures[1]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_bumpmap"), 1);
+
+        gl.ActiveTexture(gl.TEXTURE2);
+        gl.BindTexture(gl.TEXTURE_2D, textures[2]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_roof"), 2);
+
+        gl.ActiveTexture(gl.TEXTURE3);
+        gl.BindTexture(gl.TEXTURE_2D, textures[3]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_whiteMarble"), 3);
+
+        gl.ActiveTexture(gl.TEXTURE4);
+        gl.BindTexture(gl.TEXTURE_2D, textures[4]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_roofbump"), 4);
 
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);

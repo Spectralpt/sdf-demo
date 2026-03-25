@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
         .api = .gl,
         .version = .@"4.1",
         .profile = .core,
-        .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive },
+        .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive, .ARB_shading_language_include },
     });
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
@@ -27,6 +27,9 @@ pub fn build(b: *std.Build) void {
     });
 
     const cimgui_lib = cimgui_dep.artifact("cimgui");
+
+    const zstbi = b.dependency("zstbi", .{});
+    exe_mod.addImport("zstbi", zstbi.module("root"));
 
     // The following conditional is only necessary for OpenGL backends:
     if (cimgui_lib.root_module.import_table.get("gl")) |gl_module| {
