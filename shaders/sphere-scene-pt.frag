@@ -2,12 +2,17 @@
 
 uniform vec2 u_resolution; // viewport size in pixels (width, height)
 uniform int u_frame; // frame increment counter
+uniform vec2 u_mouse;
+uniform vec2 u_cameraRot;
+uniform vec3 u_cameraPos;
+uniform float u_time;
+uniform vec3 u_tempColor;
 
 uniform sampler2D u_pass1;
-out vec4 fragColor;
 
 uniform sampler2D u_main;
 uniform int u_spf; //16, [1, 64]
+out vec4 fragColor;
 
 // a pixel value multiplier of light before tone mapping and sRGB
 const float c_exposure = 0.5f;
@@ -259,22 +264,20 @@ SDF map(vec3 p) {
     back.id = 4.0;
 
     SDF left;
-    left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5); // left at x=-0.5
+    left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5);
     left.id = 5.0;
 
     SDF right;
-    right.distance = sdPlane(p, vec3(-1.0, 0.0, 0.0), 0.5); // right at x=+0.5
+    right.distance = sdPlane(p, vec3(-1.0, 0.0, 0.0), 0.5);
     right.id = 6.0;
 
     SDF top;
-    top.distance = sdPlane(p, vec3(0.0, -1.0, 0.0), 0.51); // at y=0.6
+    top.distance = sdPlane(p, vec3(0.0, -1.0, 0.0), 0.51);
     top.id = 4.0; // white
 
-    //cant figure this one out
     SDF behind;
-    // behind.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), -10.0); // Now at z = 10.0
     behind.distance = sdPlane(p, vec3(0.0, 0.0, -1.0), 1.5);
-    behind.id = 8.0;
+    behind.id = 4.0;
 
     SDF result = opUnionID(sphere1, sphere2);
     result = opUnionID(result, sphere3);
@@ -321,8 +324,10 @@ Material getMaterial(SDF object, vec3 p) {
     switch (int(object.id)) {
         //white light
         case 0:
-        // material.emissive = vec3(1) * 20.0f;
-        material.emissive = vec3(1, 0.7529422167760779, 0.5775804404296506) * 20.0f;
+        // material.emissive = vec3(1, 0.7529422167760779, 0.5775804404296506) * 20.0f;
+        // material.emissive = vec3(1.0) * 20.0f;
+        vec3 color = SRGBToLinear(u_tempColor);
+        material.emissive = color * 20.0f;
         material.albedo = vec3(0);
         break;
         //
@@ -343,9 +348,9 @@ Material getMaterial(SDF object, vec3 p) {
         //back wall
         case 4:
         material.emissive = vec3(0.0, 0.0, 0.0);
-        // float stripe = mod(floor(p.x * 20.0), 2.0);
-        // material.albedo = mix(vec3(0.7f, 0.7f, 0.7f), vec3(0.2f, 0.2f, 0.2f), stripe);
-        material.albedo = vec3(0.7, 0.7, 0.7);
+        float stripe = mod(floor(p.x * 20.0), 2.0);
+        material.albedo = mix(vec3(0.7f, 0.7f, 0.7f), vec3(0.2f, 0.2f, 0.2f), stripe);
+        // material.albedo = vec3(0.7, 0.7, 0.7);
         break;
         //left wall
         case 5:
@@ -522,6 +527,24 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir, inout uint rngStat
     return ret;
 }
 
+void pR(inout vec2 p, float a) {
+    p = cos(a) * p + sin(a) * vec2(p.y, -p.x);
+}
+
+mat3 getCam(vec3 ro, vec3 lookAt) {
+    vec3 camF = normalize(vec3(lookAt - ro));
+    vec3 camR = normalize(cross(vec3(0, 1, 0), camF));
+    vec3 camU = cross(camF, camR);
+    return mat3(camR, camU, camF);
+}
+
+void applyRotation(inout vec3 ro) {
+    // Pitch (up/down) around the XZ plane
+    pR(ro.yz, u_cameraRot.y);
+    // Yaw (left/right) around the vertical axis
+    pR(ro.xz, u_cameraRot.x);
+}
+
 void main()
 {
     //RNG setup
@@ -539,14 +562,17 @@ void main()
         float cameraDistance = 1.0f / tan(c_FOVDegrees * 0.5f * c_pi / 180.0f);
 
         Ray ray;
-        ray.origin = vec3(0.0, 0.0, 5.0);
-        ray.target = vec3(pixelTarget2D, cameraDistance);
+        // 1. The origin is strictly controlled by WASD
+        ray.origin = u_cameraPos;
 
-        //Q:why does the y axis need to be corrected for the aspect ratio?
-        //A:because of the uv coordinate system, it goes from -1 to 1 so its a square, the screen is not a square
-        ray.target.y /= aspectRatio;
+        // 2. Base ray direction (pointing down the -Z axis like a standard camera)
+        vec3 rayDir = normalize(vec3(pixelTarget2D.x * aspectRatio, pixelTarget2D.y, -cameraDistance));
 
-        ray.direction = normalize(ray.target - ray.origin);
+        // 3. Rotate the ray itself based on mouse movement
+        pR(rayDir.yz, u_cameraRot.y); // Pitch up/down
+        pR(rayDir.xz, u_cameraRot.x); // Yaw left/right
+
+        ray.direction = rayDir;
 
         accumulated_color += getColorForRay(ray.origin, ray.direction, state);
     }

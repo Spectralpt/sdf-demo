@@ -2,12 +2,17 @@
 
 uniform vec2 u_resolution; // viewport size in pixels (width, height)
 uniform int u_frame; // frame increment counter
+uniform vec2 u_mouse;
+uniform vec2 u_cameraRot;
+uniform vec3 u_cameraPos;
+uniform float u_time;
+uniform vec3 u_tempColor;
 
 uniform sampler2D u_pass1;
-out vec4 fragColor;
 
 uniform sampler2D u_main;
 uniform int u_spf; //16, [1, 64]
+out vec4 fragColor;
 
 // a pixel value multiplier of light before tone mapping and sRGB
 const float c_exposure = 0.5f;
@@ -133,6 +138,10 @@ SDF opUnionID(SDF res1, SDF res2) {
     }
 }
 
+SDF opDifferenceID(SDF res1, SDF res2) {
+    return (res1.distance > -res2.distance) ? res1 : SDF(-res2.distance, res2.id);
+}
+
 // PCG (permuted congruential generator). Thanks to:
 // www.pcg-random.org and www.shadertoy.com/view/XlGcRh
 uint NextRandom(inout uint state)
@@ -173,8 +182,44 @@ vec3 RandomDirection(inout uint state)
     return normalize(vec3(x, y, z));
 }
 
+// SDF definitions
 float dot2(vec3 v) {
     return dot(v, v);
+}
+
+float vmax(vec2 v) {
+    return max(v.x, v.y);
+}
+
+float vmax(vec3 v) {
+    return max(max(v.x, v.y), v.z);
+}
+
+float vmax(vec4 v) {
+    return max(max(v.x, v.y), max(v.z, v.w));
+}
+
+void pR(inout vec2 p, float a) {
+    p = cos(a) * p + sin(a) * vec2(p.y, -p.x);
+}
+
+// Sign function that doesn't return 0
+float sgn(float x) {
+    if (x < 0.0) return -1.0;
+    if (x > 0.0) return 1.0;
+    return 0.0;
+}
+
+vec2 sgn(vec2 v) {
+    return vec2(
+        (v.x < 0.0) ? -1.0 : 1.0,
+        (v.y < 0.0) ? -1.0 : 1.0
+    );
+}
+
+float fBox2(vec2 p, vec2 b) {
+    vec2 d = abs(p) - b;
+    return length(max(d, vec2(0))) + vmax(min(d, vec2(0)));
 }
 
 float sdSphere(vec3 p, float r)
@@ -182,6 +227,52 @@ float sdSphere(vec3 p, float r)
     return length(p) - r;
 }
 
+float sdBox(vec3 p, vec3 b)
+{
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdPlane(vec3 p, vec3 n, float h)
+{
+    // n must be normalized
+    return dot(p, n) + h;
+}
+
+// Repeat space along one axis. Use like this to repeat along the x axis:
+// <float cell = pMod1(p.x,5);> - using the return value is optional.
+float pMod1(inout float p, float size) {
+    float halfsize = size * 0.5;
+    float c = floor((p + halfsize) / size);
+    p = mod(p + halfsize, size) - halfsize;
+    return c;
+}
+
+float sdCappedCylinder(vec3 p, float r, float h)
+{
+    vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+// Mirror at an axis-aligned plane which is at a specified distance <dist> from the origin.
+float pMirror(inout float p, float dist) {
+    float s = sgn(p);
+    p = abs(p) - dist;
+    return s;
+}
+
+// Mirror in both dimensions and at the diagonal, yielding one eighth of the space.
+// translate by dist before mirroring.
+vec2 pMirrorOctant(inout vec2 p, vec2 dist) {
+    vec2 s = sgn(p);
+    pMirror(p.x, dist.x);
+    pMirror(p.y, dist.y);
+    if (p.y > p.x)
+        p.xy = p.yx;
+    return s;
+}
+
+// RNG
 uint wang_hash(inout uint seed)
 {
     seed = uint(seed ^ uint(61)) ^ uint(seed >> uint(16));
@@ -207,18 +298,6 @@ vec3 RandomUnitVector(inout uint state)
     return vec3(x, y, z);
 }
 
-float sdPlane(vec3 p, vec3 n, float h)
-{
-    // n must be normalized
-    return dot(p, n) + h;
-}
-
-float sdBox(vec3 p, vec3 b)
-{
-    vec3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
 Material GetZeroedMaterial()
 {
     Material ret;
@@ -235,55 +314,49 @@ Material GetZeroedMaterial()
 }
 
 SDF map(vec3 p) {
-    SDF sphere1;
-    sphere1.distance = sdSphere(p - vec3(0.3, -0.3, 0.0), 0.1);
-    sphere1.id = 8.0;
-
-    SDF sphere2;
-    sphere2.distance = sdSphere(p - vec3(0.0, -0.3, 0.0), 0.1);
-    sphere2.id = 7.0;
-    SDF sphere3;
-    sphere3.distance = sdSphere(p - vec3(-0.3, -0.3, 0.0), 0.1);
-    sphere3.id = 2.0;
-
     SDF sun;
-    sun.distance = sdBox(p - vec3(0.0, 0.5, 0.5), vec3(0.2, 0.01, 0.2));
+    sun.distance = sdSphere(p - vec3(100.0, 100.0, 0.0), 10.0);
     sun.id = 0.0;
 
+    //Center Sphere
+    SDF sphere;
+    sphere.distance = sdSphere(p, 5.0);
+    sphere.id = 1.0;
+
+    //Walls
+    pMirrorOctant(p.xz, vec2(50, 50));
+    p.x = -abs(p.x) + 20;
+    pMod1(p.z, 15);
+    SDF wallBox;
+    wallBox.distance = sdBox(p, vec3(3.0, 9.0, 4.0));
+    wallBox.id = 1.0;
+    SDF wallcylinder;
+    vec3 pc = p;
+    pc.y -= 9.0;
+    wallcylinder.distance = sdCappedCylinder(pc.yxz, 4.0, 3.0);
+    wallcylinder.id = 1.0;
+    SDF infBox;
+    infBox.distance = fBox2(p.xy, vec2(1.0, 15.0));
+    infBox.id = 1.0;
+    SDF walls = opUnionID(wallBox, wallcylinder);
+    walls = opDifferenceID(infBox, walls);
+
+    //Roof
+    vec3 pr = p;
+    pr.y -= 15.0;
+    pR(pr.xy, 0.6);
+    pr.x -= 18.0;
+    SDF roof;
+    roof.distance = fBox2(pr.xy, vec2(20.0, 0.3));
+    roof.id = 1.0;
+
     SDF ground;
-    ground.distance = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.4);
-    ground.id = 4.0;
+    ground.distance = sdPlane(p, vec3(0.0, 1.0, 0.0), 14);
+    ground.id = 1.0;
 
-    SDF back;
-    back.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), 0.5);
-    back.id = 4.0;
-
-    SDF left;
-    left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5); // left at x=-0.5
-    left.id = 5.0;
-
-    SDF right;
-    right.distance = sdPlane(p, vec3(-1.0, 0.0, 0.0), 0.5); // right at x=+0.5
-    right.id = 6.0;
-
-    SDF top;
-    top.distance = sdPlane(p, vec3(0.0, -1.0, 0.0), 0.51); // at y=0.6
-    top.id = 4.0; // white
-
-    //cant figure this one out
-    SDF behind;
-    // behind.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), -10.0); // Now at z = 10.0
-    behind.distance = sdPlane(p, vec3(0.0, 0.0, -1.0), 1.5);
-    behind.id = 8.0;
-
-    SDF result = opUnionID(sphere1, sphere2);
-    result = opUnionID(result, sphere3);
-    result = opUnionID(result, ground);
-    result = opUnionID(result, back);
-    result = opUnionID(result, left);
-    result = opUnionID(result, right);
-    result = opUnionID(result, top);
-    result = opUnionID(result, behind);
+    SDF result = opUnionID(walls, ground);
+    result = opUnionID(result, roof);
+    result = opUnionID(result, sphere);
 
     result = opUnionID(result, sun);
 
@@ -321,42 +394,19 @@ Material getMaterial(SDF object, vec3 p) {
     switch (int(object.id)) {
         //white light
         case 0:
-        // material.emissive = vec3(1) * 20.0f;
-        material.emissive = vec3(1, 0.7529422167760779, 0.5775804404296506) * 20.0f;
-        material.albedo = vec3(0);
-        break;
-        //
-        case 1:
-        material.emissive = vec3(0.0, 0.0, 0.0);
-        material.albedo = vec3(0.1, 0.7, 0.1);
+        // material.emissive = vec3(1, 0.7529422167760779, 0.5775804404296506) * 100.0f;
+        material.emissive = vec3(1.0) * 500.0f;
+        // vec3 color = SRGBToLinear(u_tempColor);
+        // material.emissive = color * 20.0f;
+        material.albedo = vec3(1, 0.7529422167760779, 0.5775804404296506);
+        // material.albedo = vec3(0);
         break;
         //white
-        case 2:
+        case 1:
         material.emissive = vec3(0.0, 0.0, 0.0);
         material.albedo = vec3(0.7, 0.7, 0.7);
         break;
         //red
-        case 3:
-        material.emissive = vec3(0.0, 0.0, 0.0);
-        material.albedo = vec3(0.7, 0.1, 0.1);
-        break;
-        //back wall
-        case 4:
-        material.emissive = vec3(0.0, 0.0, 0.0);
-        // float stripe = mod(floor(p.x * 20.0), 2.0);
-        // material.albedo = mix(vec3(0.7f, 0.7f, 0.7f), vec3(0.2f, 0.2f, 0.2f), stripe);
-        material.albedo = vec3(0.7, 0.7, 0.7);
-        break;
-        //left wall
-        case 5:
-        material.emissive = vec3(0.0, 0.0, 0.0);
-        material.albedo = vec3(0.7f, 0.1f, 0.1f);
-        break;
-        //right wall
-        case 6:
-        material.emissive = vec3(0.0, 0.0, 0.0);
-        material.albedo = vec3(0.1f, 0.7f, 0.1f);
-        break;
         case 7:
         material.albedo = vec3(1.0f, 1.0f, 1.0f);
         material.emissive = vec3(0.0f, 0.0f, 0.0f);
@@ -418,6 +468,7 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir, inout uint rngStat
         // if the ray missed, we are done
         if (hitInfo.dist == c_superFar)
         {
+            // if you want to add a texture for skybox or anything else its here you do that.
             break;
         }
 
@@ -522,6 +573,20 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir, inout uint rngStat
     return ret;
 }
 
+mat3 getCam(vec3 ro, vec3 lookAt) {
+    vec3 camF = normalize(vec3(lookAt - ro));
+    vec3 camR = normalize(cross(vec3(0, 1, 0), camF));
+    vec3 camU = cross(camF, camR);
+    return mat3(camR, camU, camF);
+}
+
+void applyRotation(inout vec3 ro) {
+    // Pitch (up/down) around the XZ plane
+    pR(ro.yz, u_cameraRot.y);
+    // Yaw (left/right) around the vertical axis
+    pR(ro.xz, u_cameraRot.x);
+}
+
 void main()
 {
     //RNG setup
@@ -539,14 +604,17 @@ void main()
         float cameraDistance = 1.0f / tan(c_FOVDegrees * 0.5f * c_pi / 180.0f);
 
         Ray ray;
-        ray.origin = vec3(0.0, 0.0, 5.0);
-        ray.target = vec3(pixelTarget2D, cameraDistance);
+        // 1. The origin is strictly controlled by WASD
+        ray.origin = u_cameraPos;
 
-        //Q:why does the y axis need to be corrected for the aspect ratio?
-        //A:because of the uv coordinate system, it goes from -1 to 1 so its a square, the screen is not a square
-        ray.target.y /= aspectRatio;
+        // 2. Base ray direction (pointing down the -Z axis like a standard camera)
+        vec3 rayDir = normalize(vec3(pixelTarget2D.x * aspectRatio, pixelTarget2D.y, -cameraDistance));
 
-        ray.direction = normalize(ray.target - ray.origin);
+        // 3. Rotate the ray itself based on mouse movement
+        pR(rayDir.yz, u_cameraRot.y); // Pitch up/down
+        pR(rayDir.xz, u_cameraRot.x); // Yaw left/right
+
+        ray.direction = rayDir;
 
         accumulated_color += getColorForRay(ray.origin, ray.direction, state);
     }
