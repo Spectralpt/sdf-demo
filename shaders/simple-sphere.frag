@@ -133,46 +133,6 @@ SDF opUnionID(SDF res1, SDF res2) {
     }
 }
 
-// PCG (permuted congruential generator). Thanks to:
-// www.pcg-random.org and www.shadertoy.com/view/XlGcRh
-uint NextRandom(inout uint state)
-{
-    state = state * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    uint result = (word >> 22u) ^ word;
-    return result;
-}
-
-float RandomValue(inout uint state)
-{
-    return float(NextRandom(state)) / 4294967295.0; // 2^32 - 1
-}
-
-// Random value in normal distribution (with mean=0 and sd=1)
-float RandomValueNormalDistribution(inout uint state)
-{
-    float u1 = RandomValue(state);
-    float u2 = RandomValue(state);
-
-    // Safeguard against log(0) which is undefined/infinity
-    // We use a tiny offset (epsilon)
-    u1 = max(u1, 1e-7);
-
-    float theta = 2.0 * 3.14159265359 * u2;
-    float rho = sqrt(-2.0 * log(u1));
-    return rho * cos(theta);
-}
-
-// Calculate a random direction
-vec3 RandomDirection(inout uint state)
-{
-    // Thanks to https://math.stackexchange.com/a/1585996
-    float x = RandomValueNormalDistribution(state);
-    float y = RandomValueNormalDistribution(state);
-    float z = RandomValueNormalDistribution(state);
-    return normalize(vec3(x, y, z));
-}
-
 float dot2(vec3 v) {
     return dot(v, v);
 }

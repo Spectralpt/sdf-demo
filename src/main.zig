@@ -18,7 +18,8 @@ const MouseState = struct {
     last_y: f64 = 0.0,
     yaw: f32 = -1.01,
     pitch: f32 = 0.15,
-    cam_pos: [3]f32 = .{ -54.37, -0.10, 39.99 },
+    // cam_pos: [3]f32 = .{ -54.37, -0.10, 39.99 },
+    cam_pos: [3]f32 = .{ 0.0, 0.0, 0.0 },
     first_mouse: bool = true,
     is_captured: bool = false,
     moved: bool = false,
@@ -250,6 +251,8 @@ pub fn main() !void {
     //all shaders for pass1
     const frag_paths = [_][:0]const u8{
         "shaders/newScene1.frag", //
+        "shaders/roughness-scene.frag",
+        "shaders/distortion-scene.frag",
         "shaders/simple-sphere.frag", //
         "shaders/sphere-scene-pt.frag", //
     };
