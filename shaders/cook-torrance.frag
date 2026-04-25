@@ -19,6 +19,10 @@ uniform sampler2D u_onyx;
 uniform sampler2D u_onyx_roughness;
 uniform sampler2D u_onyx_displacement;
 
+uniform sampler2D u_tile;
+uniform sampler2D u_tile_roughness;
+uniform sampler2D u_tile_displacement;
+
 uniform sampler2D u_main;
 uniform int u_spf; // 16, [1, 64]
 out vec4 fragColor;
@@ -286,6 +290,10 @@ SDF map(vec3 p) {
   SDF sphere2;
   sphere2.distance = sdSphere(p - vec3(0.0, -0.3, 0.0), 0.1);
   sphere2.id = 7.0;
+  float sphere2_disp = texture(u_onyx_displacement, p.xz).r;
+  sphere2_disp *= 0.01;
+  sphere2.distance = sphere2.distance - sphere2_disp;
+
   SDF sphere3;
   sphere3.distance = sdSphere(p - vec3(-0.3, -0.3, 0.0), 0.1);
   sphere3.id = 2.0;
@@ -303,7 +311,10 @@ SDF map(vec3 p) {
 
   SDF back;
   back.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), 0.5);
-  back.id = 4.0;
+  back.id = 11.0;
+  // float back_disp = texture(u_tile_displacement, p.xz * 0.5 + 0.5).r;
+  // back_disp *= 0.01;
+  // back.distance = back.distance - back_disp;
 
   SDF left;
   left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5);
@@ -424,7 +435,7 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
   case 7:
     material.albedo = SRGBToLinear(triPlanar(u_onyx, p, normal).rgb);
     material.metallic = 0.0;
-    material.roughness = triPlanar(u_ground_roughness, p, normal).r;
+    material.roughness = triPlanar(u_onyx_roughness, p, normal).r;
     break;
   case 8:
     material.albedo = vec3(0.8, 0.1, 0.1); // Red
@@ -450,6 +461,14 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     material.IOR = 1.3;
     material.roughness = 0.02;
     material.absorption = vec3(0.0);
+    break;
+  case 11:
+    material.albedo = SRGBToLinear(triPlanar(u_tile, p, normal).rgb);
+    material.roughness = triPlanar(u_tile_roughness,p, normal).r;
+    material.metallic = 0.0;
+    break;
+  case 12:
+    material.albedo = vec3(1.0,1.0,0.0);
     break;
   default:
     material.albedo = vec3(1.0, 0.0, 1.0); // bright magenta for unhandled ids

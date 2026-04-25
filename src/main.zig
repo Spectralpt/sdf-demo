@@ -208,8 +208,8 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
-    var textures: [6]u32 = undefined;
-    gl.GenTextures(6, @ptrCast(&textures));
+    var textures: [9]u32 = undefined;
+    gl.GenTextures(9, @ptrCast(&textures));
 
     const texture_paths = [_][:0]const u8{
         "textures/WoodFloor/Color.png",
@@ -218,6 +218,9 @@ pub fn main() !void {
         "textures/Onyx/Color.png",
         "textures/Onyx/Roughness.png",
         "textures/Onyx/Displacement.png",
+        "textures/Tiles/Color.png",
+        "textures/Tiles/Roughness.png",
+        "textures/Tiles/Displacement.png",
     };
 
     for (texture_paths, 0..) |path, i| {
@@ -260,7 +263,7 @@ pub fn main() !void {
 
     //all shaders for pass1
     const frag_paths = [_][:0]const u8{
-        "shaders/sanity.frag", //
+        // "shaders/sanity.frag", //
         "shaders/cook-torrance.frag", //
         "shaders/ct-newScene1.frag", //
         "shaders/newScene1.frag", //
@@ -490,6 +493,18 @@ pub fn main() !void {
         gl.ActiveTexture(gl.TEXTURE6);
         gl.BindTexture(gl.TEXTURE_2D, textures[5]);
         gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx_displacement"), 6);
+
+        gl.ActiveTexture(gl.TEXTURE7);
+        gl.BindTexture(gl.TEXTURE_2D, textures[6]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile"), 7);
+
+        gl.ActiveTexture(gl.TEXTURE8);
+        gl.BindTexture(gl.TEXTURE_2D, textures[7]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_displacement"), 8);
+
+        gl.ActiveTexture(gl.TEXTURE9);
+        gl.BindTexture(gl.TEXTURE_2D, textures[8]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_displacement"), 9);
 
         //drawing fbo
         gl.ActiveTexture(gl.TEXTURE0);
