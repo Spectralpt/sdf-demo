@@ -8,6 +8,8 @@ uniform sampler2D u_pass1;
 uniform sampler2D u_main;
 uniform int u_spf; //16, [1, 64]
 
+// uniform sampler2D u_ground_disp;
+
 out vec4 fragColor;
 
 // a pixel value multiplier of light before tone mapping and sRGB
@@ -89,4 +91,7 @@ void main() {
     color = ACESFilm(color);
     color = LinearToSRGB(color);
     fragColor = vec4(color, 1.0f);
+
+    // vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+    // fragColor = texture(u_ground_disp, uv);
 }

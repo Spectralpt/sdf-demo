@@ -43,7 +43,7 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
-    exe.linkSystemLibrary("glfw3");
+    //exe.linkSystemLibrary("glfw3");
     exe.linkLibrary(cimgui_lib);
     exe.linkLibC();
 

@@ -208,37 +208,47 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
-    var textures: [5]u32 = undefined;
-    gl.GenTextures(5, @ptrCast(&textures));
+    var textures: [6]u32 = undefined;
+    gl.GenTextures(6, @ptrCast(&textures));
 
     const texture_paths = [_][:0]const u8{
-        "textures/green_marble1.png",
-        "textures/green_marble1_bump.png",
-        "textures/texture3.jpg",
-        "textures/white_marble1.png",
-        "textures/height3.png",
+        "textures/WoodFloor/Color.png",
+        "textures/WoodFloor/Roughness.png",
+        "textures/WoodFloor/Displacement.png",
+        "textures/Onyx/Color.png",
+        "textures/Onyx/Roughness.png",
+        "textures/Onyx/Displacement.png",
     };
 
     for (texture_paths, 0..) |path, i| {
-        var image = try zstbi.Image.loadFromFile(path, 0);
+        var image = try zstbi.Image.loadFromFile(path, 4);
         defer image.deinit();
 
         gl.BindTexture(gl.TEXTURE_2D, textures[i]);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+        // Free tip: You were generating mipmaps but not actually using them!
+        // Changed MIN_FILTER to use the generated mipmaps.
+        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-        const fmt: u32 = if (image.num_components == 4) gl.RGBA else gl.RGB;
+        // --- THE FIX ---
+        // Check if the image loaded is 16-bit (2 bytes per component)
+        const is_16_bit = image.bytes_per_component == 2;
+
+        const internal_format: i32 = if (is_16_bit) gl.RGBA16 else gl.RGBA;
+        const data_type: u32 = if (is_16_bit) gl.UNSIGNED_SHORT else gl.UNSIGNED_BYTE;
+
         gl.TexImage2D(
             gl.TEXTURE_2D,
             0,
-            @intCast(fmt),
+            internal_format,
             @intCast(image.width),
             @intCast(image.height),
             0,
-            fmt,
-            gl.UNSIGNED_BYTE,
+            gl.RGBA,
+            data_type,
             image.data.ptr,
         );
         gl.GenerateMipmap(gl.TEXTURE_2D);
@@ -250,6 +260,9 @@ pub fn main() !void {
 
     //all shaders for pass1
     const frag_paths = [_][:0]const u8{
+        "shaders/sanity.frag", //
+        "shaders/cook-torrance.frag", //
+        "shaders/ct-newScene1.frag", //
         "shaders/newScene1.frag", //
         "shaders/roughness-scene.frag",
         "shaders/distortion-scene.frag",
@@ -453,32 +466,35 @@ pub fn main() !void {
         //     want_to_save = true;
         // }
 
-        gl.ActiveTexture(gl.TEXTURE0);
-        gl.BindTexture(gl.TEXTURE_2D, textures[0]);
-        const uniform_tex = gl.GetUniformLocation(programs[@intCast(current_item)], "u_greenMarble");
-        gl.Uniform1i(uniform_tex, 0);
-
         //textures setup
         gl.ActiveTexture(gl.TEXTURE1);
-        gl.BindTexture(gl.TEXTURE_2D, textures[1]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_bumpmap"), 1);
+        gl.BindTexture(gl.TEXTURE_2D, textures[0]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground"), 1);
 
         gl.ActiveTexture(gl.TEXTURE2);
-        gl.BindTexture(gl.TEXTURE_2D, textures[2]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_roof"), 2);
+        gl.BindTexture(gl.TEXTURE_2D, textures[1]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground_roughness"), 2);
 
         gl.ActiveTexture(gl.TEXTURE3);
-        gl.BindTexture(gl.TEXTURE_2D, textures[3]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_whiteMarble"), 3);
+        gl.BindTexture(gl.TEXTURE_2D, textures[2]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground_disp"), 3);
 
         gl.ActiveTexture(gl.TEXTURE4);
+        gl.BindTexture(gl.TEXTURE_2D, textures[3]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx"), 4);
+
+        gl.ActiveTexture(gl.TEXTURE5);
         gl.BindTexture(gl.TEXTURE_2D, textures[4]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_roofbump"), 4);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx_roughness"), 5);
+
+        gl.ActiveTexture(gl.TEXTURE6);
+        gl.BindTexture(gl.TEXTURE_2D, textures[5]);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx_displacement"), 6);
 
         //drawing fbo
-        gl.ActiveTexture(gl.TEXTURE5);
+        gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[current]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_pass1"), 5);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
         if (mouse_state.moved or moved_this_frame) {

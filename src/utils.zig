@@ -38,7 +38,7 @@ pub fn kelvinToColor(temp_in: i32) [3]f32 {
         }
     }
 
-    std.debug.print("red:{d},green:{d},blue:{d}\n", .{ red, green, blue });
+    // std.debug.print("red:{d},green:{d},blue:{d}\n", .{ red, green, blue });
 
     return [_]f32{ red / 255.0, green / 255.0, blue / 255.0 };
 }
