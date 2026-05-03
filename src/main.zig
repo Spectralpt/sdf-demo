@@ -500,7 +500,7 @@ pub fn main() !void {
 
         gl.ActiveTexture(gl.TEXTURE8);
         gl.BindTexture(gl.TEXTURE_2D, textures[7]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_displacement"), 8);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_roughness"), 8);
 
         gl.ActiveTexture(gl.TEXTURE9);
         gl.BindTexture(gl.TEXTURE_2D, textures[8]);
