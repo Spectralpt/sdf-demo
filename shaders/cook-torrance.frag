@@ -464,11 +464,11 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     break;
   case 11:
     material.albedo = SRGBToLinear(triPlanar(u_tile, p, normal).rgb);
-    material.roughness = triPlanar(u_tile_roughness,p, normal).r;
+    material.roughness = triPlanar(u_tile_roughness, p, normal).r;
     material.metallic = 0.0;
     break;
   case 12:
-    material.albedo = vec3(1.0,1.0,0.0);
+    material.albedo = vec3(1.0, 1.0, 0.0);
     break;
   default:
     material.albedo = vec3(1.0, 0.0, 1.0); // bright magenta for unhandled ids

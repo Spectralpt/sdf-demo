@@ -141,15 +141,40 @@ pub fn main() !void {
     }
     defer c.glfwTerminate();
 
-    const render_w: c_int = 1920;
-    const render_h: c_int = 1080;
+    // CLI ARGS
+    var args = try std.process.argsWithAllocator(allocator);
+    var argsArray: std.ArrayList([:0]const u8) = .empty;
+    defer argsArray.deinit(allocator);
+    defer args.deinit();
+    while (args.next()) |arg| {
+        try argsArray.append(allocator, arg);
+    }
 
-    const GLSL_VERSION = "#version 410";
+    // if (argsArray.items.len < 5) {
+    //     std.debug.print("Usage: sdf-demos <render_w> <render_h> <window_w> <window_h>\n", .{});
+    //     return;
+    // }
+
+    var render_w: c_int = 1920;
+    var render_h: c_int = 1080;
+
+    var window_w: c_int = 1920;
+    var window_h: c_int = 1080;
+
+    if (argsArray.items.len >= 5) {
+        render_w = try std.fmt.parseInt(c_int, argsArray.items[1], 10);
+        render_h = try std.fmt.parseInt(c_int, argsArray.items[2], 10);
+
+        window_w = try std.fmt.parseInt(c_int, argsArray.items[3], 10);
+        window_h = try std.fmt.parseInt(c_int, argsArray.items[4], 10);
+    }
+
+    const GLSL_VERSION = "#version 460";
 
     c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, 4);
-    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 1);
+    c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 6);
     c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
-    const window = c.glfwCreateWindow(1920, 1080, "SDF - Demos", null, null);
+    const window = c.glfwCreateWindow(window_w, window_h, "SDF - Demos", null, null);
     if (window == null) {
         return;
     }
@@ -170,6 +195,10 @@ pub fn main() !void {
 
     gl.makeProcTableCurrent(&procs);
     defer gl.makeProcTableCurrent(null);
+
+    const version_ptr = gl.GetString(gl.VERSION);
+    const version_string = std.mem.span(version_ptr);
+    std.debug.print("OpenGL Version:{s}\n", .{version_string orelse "Unknown"});
 
     const vertices = [_]f32{
         -1.0, 1.0, 0.0, //top left
@@ -223,38 +252,8 @@ pub fn main() !void {
         "textures/Tiles/Displacement.png",
     };
 
-    for (texture_paths, 0..) |path, i| {
-        var image = try zstbi.Image.loadFromFile(path, 4);
-        defer image.deinit();
-
-        gl.BindTexture(gl.TEXTURE_2D, textures[i]);
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-
-        // Free tip: You were generating mipmaps but not actually using them!
-        // Changed MIN_FILTER to use the generated mipmaps.
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-        // --- THE FIX ---
-        // Check if the image loaded is 16-bit (2 bytes per component)
-        const is_16_bit = image.bytes_per_component == 2;
-
-        const internal_format: i32 = if (is_16_bit) gl.RGBA16 else gl.RGBA;
-        const data_type: u32 = if (is_16_bit) gl.UNSIGNED_SHORT else gl.UNSIGNED_BYTE;
-
-        gl.TexImage2D(
-            gl.TEXTURE_2D,
-            0,
-            internal_format,
-            @intCast(image.width),
-            @intCast(image.height),
-            0,
-            gl.RGBA,
-            data_type,
-            image.data.ptr,
-        );
-        gl.GenerateMipmap(gl.TEXTURE_2D);
+    for (texture_paths, 1..) |path, i| {
+        try utils.loadTexture(path, @intCast(i));
     }
 
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
@@ -263,7 +262,7 @@ pub fn main() !void {
 
     //all shaders for pass1
     const frag_paths = [_][:0]const u8{
-        // "shaders/sanity.frag", //
+        "shaders/sanity.frag", //
         "shaders/cook-torrance.frag", //
         "shaders/ct-newScene1.frag", //
         "shaders/newScene1.frag", //
@@ -335,6 +334,7 @@ pub fn main() !void {
     var frame: u32 = 0;
     var rendered_frame: u32 = 1;
     var want_to_save: bool = false;
+
     //scene state
     var light_temperature: i32 = 5000;
     while (c.glfwWindowShouldClose(window) == 0) {
@@ -415,7 +415,7 @@ pub fn main() !void {
         const uniform_frame = gl.GetUniformLocation(programs[@intCast(current_item)], "u_frame");
         gl.Uniform1i(uniform_frame, @intCast(frame));
 
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_spf"), 8);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_spf"), 1);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
         const uniform_temperatureRGB = gl.GetUniformLocation(programs[@intCast(current_item)], "u_tempColor");
@@ -558,6 +558,9 @@ pub fn main() !void {
 
         //--------
 
+        while (gl.GetError() != gl.NO_ERROR) {
+            std.debug.print("OpenGL Error:{any}\n", .{gl.GetError()});
+        }
         c.cImGui_ImplOpenGL3_RenderDrawData(c.ImGui_GetDrawData());
         frame += 1;
         c.glfwSwapBuffers(window);
