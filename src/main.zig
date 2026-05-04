@@ -328,12 +328,16 @@ pub fn main() !void {
 
     var is_active = false;
     var current_item: c_int = 0;
-    const imgui_window = c.ImVec2{ .x = 300, .y = 100 };
+    const imgui_window = c.ImVec2{ .x = 0, .y = 0 };
     const imgui_window_pos = c.ImVec2{ .x = 20, .y = 20 };
     gl.ClearColor(0.1, 0.1, 0.1, 1);
     var frame: u32 = 0;
+    var spf_frames: u32 = 0;
+    var seconds_per_frame: f32 = 0;
     var rendered_frame: u32 = 1;
     var want_to_save: bool = false;
+
+    var last_time = c.glfwGetTime();
 
     //scene state
     var light_temperature: i32 = 5000;
@@ -371,6 +375,7 @@ pub fn main() !void {
         }
         c.ImGui_Spacing();
         c.ImGui_Text("Frame: %d", frame);
+        c.ImGui_Text("Frame time: %.2f ms", seconds_per_frame);
         c.ImGui_SeparatorText("Position");
         c.ImGui_Text("x: %.2f", mouse_state.cam_pos[0]);
         c.ImGui_Text("y: %.2f", mouse_state.cam_pos[1]);
@@ -562,7 +567,15 @@ pub fn main() !void {
             std.debug.print("OpenGL Error:{any}\n", .{gl.GetError()});
         }
         c.cImGui_ImplOpenGL3_RenderDrawData(c.ImGui_GetDrawData());
+
         frame += 1;
+        spf_frames += 1;
+        const spf_current_time = c.glfwGetTime();
+        if (spf_current_time - last_time >= 1.0) {
+            seconds_per_frame = 1000 / @as(f32, @floatFromInt(spf_frames));
+            spf_frames = 0;
+            last_time += 1.0;
+        }
         c.glfwSwapBuffers(window);
         // if (light_temperature <= 900) {
         //     std.process.exit(0);
