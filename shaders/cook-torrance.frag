@@ -366,7 +366,7 @@ SDF rayMarch(vec3 ro, vec3 rd) {
     vec3 p = ro + rd * t;
     hit = map(p); // Distance to nearest object
     // really need to understand why mult this by 0.98 fixes the pattern
-    t += abs(hit.distance) * 1.0;
+    t += abs(hit.distance) * 0.5;
     object.distance = hit.distance;
     object.id = hit.id;
     if (abs(hit.distance) < EPSILON || t > MAX_DIST)
