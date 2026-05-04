@@ -318,7 +318,7 @@ SDF map(vec3 p) {
   SDF back;
   back.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), 0.5);
   back.id = 11.0;
-  float back_disp = texture(u_tile_displacement, p.xz * 0.5 + 0.5).r;
+  float back_disp = texture(u_tile_displacement, p.xy).r;
   back_disp *= 0.01;
   back.distance = back.distance - back_disp;
 
@@ -449,8 +449,10 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     material.roughness = 1.0;              // Quite rough
     break;
   case 9:
-    vec3 texColor = triPlanar(u_ground, p, normal).rgb;
-    float texRough = triPlanar(u_ground_roughness, p, normal).r;
+    // vec3 texColor = triPlanar(u_ground, p, normal).rgb;
+    // float texRough = triPlanar(u_ground_roughness, p, normal).r;
+    vec3 texColor = texture(u_ground, p.xz).rgb;
+    float texRough = texture(u_ground_roughness, p.xz).r;
 
     material.albedo = SRGBToLinear(texColor);
     material.roughness = texRough;
@@ -469,8 +471,10 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     material.absorption = vec3(0.0);
     break;
   case 11:
-    material.albedo = SRGBToLinear(triPlanar(u_tile, p, normal).rgb);
-    material.roughness = triPlanar(u_tile_roughness, p, normal).r;
+    // material.albedo = SRGBToLinear(triPlanar(u_tile, p, normal).rgb);
+    // material.roughness = triPlanar(u_tile_roughness, p, normal).r;
+    material.albedo = SRGBToLinear(texture(u_tile, p.xy).rgb);
+    material.roughness = texture(u_tile_roughness, p.xy).r;
     material.metallic = 0.0;
     break;
   case 12:
