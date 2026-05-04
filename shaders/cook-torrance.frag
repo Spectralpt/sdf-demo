@@ -256,7 +256,7 @@ vec3 triPlanar(sampler2D tex, vec3 p, vec3 normal) {
 }
 
 vec3 triPlanarNormal(sampler2D tex, vec3 p, vec3 geomNormal) {
-  // 1. Calculate the same blend weights you used for color
+  // 1. Calculate the blend weights based on the macro normal
   vec3 blend = abs(geomNormal);
   blend = pow(blend, vec3(5.0));
   blend /= (blend.x + blend.y + blend.z);
@@ -266,19 +266,25 @@ vec3 triPlanarNormal(sampler2D tex, vec3 p, vec3 geomNormal) {
   vec3 tY = texture(tex, p.xz * 0.5).rgb * 2.0 - 1.0;
   vec3 tZ = texture(tex, p.xy * 0.5).rgb * 2.0 - 1.0;
 
-  // 3. Prevent inverted bumps on the "back" sides of the SDF
+  // 3. Prevent inverted bumps on the "back" sides of the SDF.
+  // We flip the tangent (X) of the normal map based on the facing direction.
   tX.x *= sign(geomNormal.x);
-  tY.y *= sign(geomNormal.y);
-  tZ.z *= sign(geomNormal.z);
+  tY.x *= sign(geomNormal.y); // Flipped X instead of Y
+  tZ.x *= sign(geomNormal.z); // Flipped X instead of Z
 
-  // 4. Swizzle the vectors to align with world space!
-  // The Z-component of a normal map is "outward". We point that outward
-  // along the respective world axis for each plane.
-  vec3 nX = vec3(tX.z, tX.y, tX.x);
+  tX = vec3(tX.xy + geomNormal.zy, abs(tX.z) * geomNormal.x);
+  tY = vec3(tY.xy + geomNormal.xz, abs(tY.z) * geomNormal.y);
+  tZ = vec3(tZ.xy + geomNormal.xy, abs(tZ.z) * geomNormal.z);
+
+  // 5. Swizzle the vectors to align with world space based on UV mapping!
+  // p.yz (U=Y, V=Z) -> TexX=WorldY, TexY=WorldZ
+  vec3 nX = vec3(tX.z, tX.x, tX.y);
+  // p.xz (U=X, V=Z) -> TexX=WorldX, TexY=WorldZ
   vec3 nY = vec3(tY.x, tY.z, tY.y);
+  // p.xy (U=X, V=Y) -> TexX=WorldX, TexY=WorldY
   vec3 nZ = vec3(tZ.x, tZ.y, tZ.z);
 
-  // 5. Blend and return the final bent normal
+  // 6. Blend and return the final bent normal
   return normalize(nX * blend.x + nY * blend.y + nZ * blend.z);
 }
 
@@ -312,9 +318,9 @@ SDF map(vec3 p) {
   SDF back;
   back.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), 0.5);
   back.id = 11.0;
-  // float back_disp = texture(u_tile_displacement, p.xz * 0.5 + 0.5).r;
-  // back_disp *= 0.01;
-  // back.distance = back.distance - back_disp;
+  float back_disp = texture(u_tile_displacement, p.xz * 0.5 + 0.5).r;
+  back_disp *= 0.01;
+  back.distance = back.distance - back_disp;
 
   SDF left;
   left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5);
@@ -450,7 +456,7 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     material.roughness = texRough;
     material.metallic = 0.0;
 
-    // normal = triPlanarNormal(u_ground_normal, p,normal);
+    // normal = triPlanarNormal(u_ground_normal, p, normal);
 
     break;
   // glass
