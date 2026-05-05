@@ -22,6 +22,7 @@ const MouseState = struct {
     cam_pos: [3]f32 = .{ 0.0, 0.0, 0.0 },
     first_mouse: bool = true,
     is_captured: bool = false,
+    im_gui_wants_mouse: bool = false,
     moved: bool = false,
     lmb_pressed: bool = false,
 };
@@ -327,7 +328,7 @@ pub fn main() !void {
     defer c.cImGui_ImplOpenGL3_Shutdown();
 
     var is_active = false;
-    var current_item: c_int = 0;
+    var current_scene: c_int = 0;
     const imgui_window = c.ImVec2{ .x = 0, .y = 0 };
     const imgui_window_pos = c.ImVec2{ .x = 20, .y = 20 };
     gl.ClearColor(0.1, 0.1, 0.1, 1);
@@ -345,6 +346,7 @@ pub fn main() !void {
         c.glfwPollEvents();
 
         // UI
+        const imgui_io = c.ImGui_GetIO();
         c.cImGui_ImplOpenGL3_NewFrame();
         c.cImGui_ImplGlfw_NewFrame();
         c.ImGui_NewFrame();
@@ -364,10 +366,10 @@ pub fn main() !void {
                 std.log.err("Failed to save screenshot: {}", .{err});
             };
         }
-        if (c.ImGui_BeginCombo(" ", frag_paths[@intCast(current_item)], 0)) {
+        if (c.ImGui_BeginCombo(" ", frag_paths[@intCast(current_scene)], 0)) {
             for (frag_paths, 0..) |scene, i| {
                 if (c.ImGui_Selectable(scene)) {
-                    current_item = @intCast(i);
+                    current_scene = @intCast(i);
                     frame = 0;
                 }
             }
@@ -386,7 +388,7 @@ pub fn main() !void {
         c.ImGui_Spacing();
         c.ImGui_Spacing();
         if (c.ImGui_SliderInt("Color temperature", @ptrCast(&light_temperature), 1000, 7000)) {
-            std.debug.print("temp:{any}\n", .{light_temperature});
+            // std.debug.print("temp:{any}\n", .{light_temperature});
         }
         c.ImGui_End();
 
@@ -401,37 +403,37 @@ pub fn main() !void {
         // our rendering
 
         //uniforms setup
-        gl.UseProgram(programs[@intCast(current_item)]);
+        gl.UseProgram(programs[@intCast(current_scene)]);
         var mouse_x: f64 = undefined;
         var mouse_y: f64 = undefined;
         c.glfwGetCursorPos(window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
 
-        const uniform_window_size = gl.GetUniformLocation(programs[@intCast(current_item)], "u_resolution");
+        const uniform_window_size = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_resolution");
         // gl.Uniform2f(uniform_window_size, @floatFromInt(width), @floatFromInt(height));
         gl.Uniform2f(uniform_window_size, @floatFromInt(render_w), @floatFromInt(render_h));
 
-        const uniform_mouse_pos = gl.GetUniformLocation(programs[@intCast(current_item)], "u_mouse");
+        const uniform_mouse_pos = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_mouse");
         gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
 
         const current_time: f64 = c.glfwGetTime();
-        const uniform_time = gl.GetUniformLocation(programs[@intCast(current_item)], "u_time");
+        const uniform_time = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_time");
         gl.Uniform1f(uniform_time, @floatCast(current_time));
 
-        const uniform_frame = gl.GetUniformLocation(programs[@intCast(current_item)], "u_frame");
+        const uniform_frame = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_frame");
         gl.Uniform1i(uniform_frame, @intCast(frame));
 
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_spf"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_spf"), 1);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
-        const uniform_temperatureRGB = gl.GetUniformLocation(programs[@intCast(current_item)], "u_tempColor");
+        const uniform_temperatureRGB = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tempColor");
         gl.Uniform3f(uniform_temperatureRGB, temperatureRGB[0], temperatureRGB[1], temperatureRGB[2]);
 
         // yaw and pitch
-        const uniform_cam_rot = gl.GetUniformLocation(programs[@intCast(current_item)], "u_cameraRot");
+        const uniform_cam_rot = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_cameraRot");
         gl.Uniform2f(uniform_cam_rot, mouse_state.yaw, mouse_state.pitch);
 
         //camera position
-        const uniform_cam_pos = gl.GetUniformLocation(programs[@intCast(current_item)], "u_cameraPos");
+        const uniform_cam_pos = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_cameraPos");
         gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&mouse_state.cam_pos));
 
         // --- WASD MOVEMENT LOGIC ---
@@ -477,47 +479,47 @@ pub fn main() !void {
         //textures setup
         gl.ActiveTexture(gl.TEXTURE1);
         gl.BindTexture(gl.TEXTURE_2D, textures[0]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground"), 1);
 
         gl.ActiveTexture(gl.TEXTURE2);
         gl.BindTexture(gl.TEXTURE_2D, textures[1]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground_roughness"), 2);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground_roughness"), 2);
 
         gl.ActiveTexture(gl.TEXTURE3);
         gl.BindTexture(gl.TEXTURE_2D, textures[2]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_ground_disp"), 3);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground_disp"), 3);
 
         gl.ActiveTexture(gl.TEXTURE4);
         gl.BindTexture(gl.TEXTURE_2D, textures[3]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx"), 4);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx"), 4);
 
         gl.ActiveTexture(gl.TEXTURE5);
         gl.BindTexture(gl.TEXTURE_2D, textures[4]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx_roughness"), 5);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx_roughness"), 5);
 
         gl.ActiveTexture(gl.TEXTURE6);
         gl.BindTexture(gl.TEXTURE_2D, textures[5]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_onyx_displacement"), 6);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx_displacement"), 6);
 
         gl.ActiveTexture(gl.TEXTURE7);
         gl.BindTexture(gl.TEXTURE_2D, textures[6]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile"), 7);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile"), 7);
 
         gl.ActiveTexture(gl.TEXTURE8);
         gl.BindTexture(gl.TEXTURE_2D, textures[7]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_roughness"), 8);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile_roughness"), 8);
 
         gl.ActiveTexture(gl.TEXTURE9);
         gl.BindTexture(gl.TEXTURE_2D, textures[8]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_tile_displacement"), 9);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile_displacement"), 9);
 
         //drawing fbo
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[current]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_item)], "u_pass1"), 0);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
-        if (mouse_state.moved or moved_this_frame) {
+        if ((mouse_state.moved or moved_this_frame) and imgui_io.*.WantCaptureMouse == false) {
             const clear_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
             gl.ClearBufferfv(gl.COLOR, 0, @ptrCast(&clear_color));
 
