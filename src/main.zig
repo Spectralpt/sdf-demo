@@ -3,83 +3,62 @@ const shaders = @import("shaders.zig");
 const std = @import("std");
 const zstbi = @import("zstbi");
 const utils = @import("utils.zig");
+const state = @import("state.zig");
+const cli = @import("cli.zig");
+const c = @import("c.zig").c;
 // const Scene = @import("scene.zig");
-
-const c = @cImport({
-    @cDefine("GLFW_INCLUDE_NONE", "1");
-    @cInclude("GLFW/glfw3.h");
-    @cInclude("dcimgui.h");
-    @cInclude("backends/dcimgui_impl_glfw.h");
-    @cInclude("backends/dcimgui_impl_opengl3.h");
-});
-
-const MouseState = struct {
-    last_x: f64 = 0.0,
-    last_y: f64 = 0.0,
-    yaw: f32 = -1.01,
-    pitch: f32 = 0.15,
-    // cam_pos: [3]f32 = .{ -54.37, -0.10, 39.99 },
-    cam_pos: [3]f32 = .{ 0.0, 0.0, 0.0 },
-    first_mouse: bool = true,
-    is_captured: bool = false,
-    im_gui_wants_mouse: bool = false,
-    moved: bool = false,
-    lmb_pressed: bool = false,
-};
 
 fn errorCallback(errn: c_int, str: [*c]const u8) callconv(std.builtin.CallingConvention.c) void {
     std.log.err("GLFW Error '{}'': {s}", .{ errn, str });
 }
 
 fn cursorPosCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(std.builtin.CallingConvention.c) void {
-    // 1. Get the pointer we attached to the window earlier
     const user_ptr = c.glfwGetWindowUserPointer(window);
-    // 2. Cast it back to our Zig struct
-    const state = @as(*MouseState, @ptrCast(@alignCast(user_ptr)));
+    const app = @as(*state.app_state, @ptrCast(@alignCast(user_ptr)));
 
-    if (state.is_captured == false) return;
+    if (!app.mouse.is_captured) return;
 
-    if (state.first_mouse) {
-        state.last_x = xpos;
-        state.last_y = ypos;
-        state.first_mouse = false;
+    if (app.mouse.first_mouse) {
+        app.mouse.last_pos[0] = xpos;
+        app.mouse.last_pos[1] = ypos;
+        app.mouse.first_mouse = false;
         return;
     }
 
-    const x_offset = xpos - state.last_x;
-    const y_offset = state.last_y - ypos; // Y is inverted in screen space
+    const x_offset = xpos - app.mouse.last_pos[0];
+    const y_offset = app.mouse.last_pos[1] - ypos; // Y is inverted in screen space
 
-    state.last_x = xpos;
-    state.last_y = ypos;
+    app.mouse.last_pos[0] = xpos;
+    app.mouse.last_pos[1] = ypos;
 
     const sensitivity: f32 = 0.005;
-    state.yaw -= @as(f32, @floatCast(x_offset)) * sensitivity;
-    state.pitch -= @as(f32, @floatCast(y_offset)) * sensitivity;
+    app.scene.yaw -= @as(f32, @floatCast(x_offset)) * sensitivity;
+    app.scene.pitch -= @as(f32, @floatCast(y_offset)) * sensitivity;
 
     // Constrain pitch (approx 85 degrees)
-    if (state.pitch > 1.5) state.pitch = 1.5;
-    if (state.pitch < -1.5) state.pitch = -1.5;
+    if (app.scene.pitch > 1.5) app.scene.pitch = 1.5;
+    if (app.scene.pitch < -1.5) app.scene.pitch = -1.5;
 
     // This flag tells your main loop to reset u_frame and clear the ping-pong buffers
-    state.moved = true;
+    app.mouse.moved = true;
 }
 
 fn mouseButtonCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods: c_int) callconv(std.builtin.CallingConvention.c) void {
     _ = mods;
     if (button == c.GLFW_MOUSE_BUTTON_LEFT) {
-        // 1. Get the pointer we attached to the window earlier
         const user_ptr = c.glfwGetWindowUserPointer(window);
-        // 2. Cast it back to our Zig struct
-        const state = @as(*MouseState, @ptrCast(@alignCast(user_ptr)));
+        const app = @as(*state.app_state, @ptrCast(@alignCast(user_ptr)));
+
         if (action == c.GLFW_PRESS) {
-            state.is_captured = true;
-            state.lmb_pressed = true;
+            app.mouse.is_captured = true;
+            app.mouse.lmb_pressed = true;
             c.glfwSetInputMode(window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
             std.debug.print("pressed lmb\n", .{});
 
-            state.first_mouse = true;
+            app.mouse.first_mouse = true;
         } else if (action == c.GLFW_RELEASE) {
-            state.is_captured = false;
+            app.mouse.is_captured = false;
+            app.mouse.lmb_pressed = false; // Resetting the pressed state
             c.glfwSetInputMode(window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
     }
@@ -142,47 +121,24 @@ pub fn main() !void {
     }
     defer c.glfwTerminate();
 
+    var appState = state.app_state{};
+    appState.window_title = "SDF Path Tracing";
+
     // CLI ARGS
-    var args = try std.process.argsWithAllocator(allocator);
-    var argsArray: std.ArrayList([:0]const u8) = .empty;
-    defer argsArray.deinit(allocator);
-    defer args.deinit();
-    while (args.next()) |arg| {
-        try argsArray.append(allocator, arg);
-    }
-
-    // if (argsArray.items.len < 5) {
-    //     std.debug.print("Usage: sdf-demos <render_w> <render_h> <window_w> <window_h>\n", .{});
-    //     return;
-    // }
-
-    var render_w: c_int = 1920;
-    var render_h: c_int = 1080;
-
-    var window_w: c_int = 1920;
-    var window_h: c_int = 1080;
-
-    if (argsArray.items.len >= 5) {
-        render_w = try std.fmt.parseInt(c_int, argsArray.items[1], 10);
-        render_h = try std.fmt.parseInt(c_int, argsArray.items[2], 10);
-
-        window_w = try std.fmt.parseInt(c_int, argsArray.items[3], 10);
-        window_h = try std.fmt.parseInt(c_int, argsArray.items[4], 10);
-    }
+    try cli.processArgs(&appState, allocator);
 
     const GLSL_VERSION = "#version 460";
 
     c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, 4);
     c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 6);
     c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
-    const window = c.glfwCreateWindow(window_w, window_h, "SDF - Demos", null, null);
+    const window = c.glfwCreateWindow(appState.window_w, appState.window_h, appState.window_title.ptr, null, null);
     if (window == null) {
         return;
     }
     defer c.glfwDestroyWindow(window);
 
-    var mouse_state = MouseState{ .last_x = 0, .last_y = 0 };
-    c.glfwSetWindowUserPointer(window, &mouse_state); // Attach the state here
+    c.glfwSetWindowUserPointer(window, &appState);
 
     // Callbacks
     _ = c.glfwSetCursorPosCallback(window, cursorPosCallback);
@@ -263,14 +219,14 @@ pub fn main() !void {
 
     //all shaders for pass1
     const frag_paths = [_][:0]const u8{
-        "shaders/sanity.frag", //
-        "shaders/cook-torrance.frag", //
-        "shaders/ct-newScene1.frag", //
-        "shaders/newScene1.frag", //
+        "shaders/sanity.frag",
+        "shaders/cook-torrance.frag",
+        "shaders/ct-newScene1.frag",
+        "shaders/newScene1.frag",
         "shaders/roughness-scene.frag",
         "shaders/distortion-scene.frag",
-        "shaders/simple-sphere.frag", //
-        "shaders/sphere-scene-pt.frag", //
+        "shaders/simple-sphere.frag",
+        "shaders/sphere-scene-pt.frag",
     };
     var programs: [frag_paths.len]u32 = undefined;
 
@@ -300,7 +256,7 @@ pub fn main() !void {
     for (0..2) |i| {
         //texture we write to
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[i]);
-        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, render_w, render_h, 0, gl.RGBA, gl.FLOAT, null);
+        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, appState.renderer.render_w, appState.renderer.render_h, 0, gl.RGBA, gl.FLOAT, null);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -327,21 +283,29 @@ pub fn main() !void {
     _ = c.cImGui_ImplOpenGL3_InitEx(GLSL_VERSION);
     defer c.cImGui_ImplOpenGL3_Shutdown();
 
-    var is_active = false;
-    var current_scene: c_int = 0;
-    const imgui_window = c.ImVec2{ .x = 0, .y = 0 };
-    const imgui_window_pos = c.ImVec2{ .x = 20, .y = 20 };
-    gl.ClearColor(0.1, 0.1, 0.1, 1);
-    var frame: u32 = 0;
+    // var is_active = false;
+    // var current_scene: c_int = 0;
+    // const imgui_window = c.ImVec2{ .x = 0, .y = 0 };
+    // const imgui_window_pos = c.ImVec2{ .x = 20, .y = 20 };
+    // gl.ClearColor(0.1, 0.1, 0.1, 1);
+    // var frame: u32 = 0;
     var spf_frames: u32 = 0;
-    var seconds_per_frame: f32 = 0;
+    // var seconds_per_frame: f32 = 0;
     var rendered_frame: u32 = 1;
-    var want_to_save: bool = false;
+    // var want_to_save: bool = false;
 
-    var last_time = c.glfwGetTime();
+    appState.imgui.is_active = false;
+    appState.renderer.current_scene = 0;
+    appState.imgui.window_size = .{ .x = 0, .y = 0 };
+    appState.renderer.total_accumulated_frames = 0;
+    appState.metrics.ms_per_frame = 0;
+    appState.renderer.want_to_save = false;
+    appState.renderer.current_scene = 0;
 
     //scene state
     var light_temperature: i32 = 5000;
+
+    appState.metrics.last_time = c.glfwGetTime();
     while (c.glfwWindowShouldClose(window) == 0) {
         c.glfwPollEvents();
 
@@ -351,39 +315,39 @@ pub fn main() !void {
         c.cImGui_ImplGlfw_NewFrame();
         c.ImGui_NewFrame();
 
-        c.ImGui_SetNextWindowSize(imgui_window, c.ImGuiCond_FirstUseEver);
-        c.ImGui_SetNextWindowPos(imgui_window_pos, c.ImGuiCond_FirstUseEver);
-        _ = c.ImGui_Begin("Demos", &is_active, c.ImGuiWindowFlags_NoSavedSettings);
+        c.ImGui_SetNextWindowSize(appState.imgui.window_size, c.ImGuiCond_FirstUseEver);
+        c.ImGui_SetNextWindowPos(appState.imgui.window_pos, c.ImGuiCond_FirstUseEver);
+        _ = c.ImGui_Begin("Demos", &appState.imgui.is_active, c.ImGuiWindowFlags_NoSavedSettings);
         if (c.ImGui_Button("Save Render")) {
-            want_to_save = true;
+            appState.renderer.want_to_save = true;
             var w: c_int = 0;
             var h: c_int = 0;
             c.glfwGetFramebufferSize(window, &w, &h);
 
             // Note: In Zig, error handling in UI callbacks can be tricky.
             // We use 'catch' to prevent a crash if the disk is full.
-            saveScreenshot(allocator, w, h, frame) catch |err| {
+            saveScreenshot(allocator, w, h, appState.renderer.total_accumulated_frames) catch |err| {
                 std.log.err("Failed to save screenshot: {}", .{err});
             };
         }
-        if (c.ImGui_BeginCombo(" ", frag_paths[@intCast(current_scene)], 0)) {
+        if (c.ImGui_BeginCombo(" ", frag_paths[@intCast(appState.renderer.current_scene)], 0)) {
             for (frag_paths, 0..) |scene, i| {
                 if (c.ImGui_Selectable(scene)) {
-                    current_scene = @intCast(i);
-                    frame = 0;
+                    appState.renderer.current_scene = @intCast(i);
+                    appState.renderer.total_accumulated_frames = 0;
                 }
             }
             c.ImGui_EndCombo();
         }
         c.ImGui_Spacing();
-        c.ImGui_Text("Frame: %d", frame);
-        c.ImGui_Text("Frame time: %.2f ms", seconds_per_frame);
+        c.ImGui_Text("Frame: %d", appState.renderer.total_accumulated_frames);
+        c.ImGui_Text("Frame time: %.2f ms", appState.metrics.ms_per_frame);
         c.ImGui_SeparatorText("Position");
-        c.ImGui_Text("x: %.2f", mouse_state.cam_pos[0]);
-        c.ImGui_Text("y: %.2f", mouse_state.cam_pos[1]);
-        c.ImGui_Text("z: %.2f", mouse_state.cam_pos[2]);
-        c.ImGui_Text("yaw: %.2f", mouse_state.yaw);
-        c.ImGui_Text("pitch: %.2f", mouse_state.pitch);
+        c.ImGui_Text("x: %.2f", appState.scene.cam_pos[0]);
+        c.ImGui_Text("y: %.2f", appState.scene.cam_pos[1]);
+        c.ImGui_Text("z: %.2f", appState.scene.cam_pos[2]);
+        c.ImGui_Text("yaw: %.2f", appState.scene.yaw);
+        c.ImGui_Text("pitch: %.2f", appState.scene.pitch);
 
         c.ImGui_Spacing();
         c.ImGui_Spacing();
@@ -397,44 +361,44 @@ pub fn main() !void {
         var width: c_int = 0;
         var height: c_int = 0;
         c.glfwGetFramebufferSize(window, &width, &height);
-        gl.Viewport(0, 0, render_w, render_h);
+        gl.Viewport(0, 0, appState.renderer.render_w, appState.renderer.render_h);
         gl.Clear(gl.COLOR_BUFFER_BIT);
 
         // our rendering
 
         //uniforms setup
-        gl.UseProgram(programs[@intCast(current_scene)]);
+        gl.UseProgram(programs[@intCast(appState.renderer.current_scene)]);
         var mouse_x: f64 = undefined;
         var mouse_y: f64 = undefined;
         c.glfwGetCursorPos(window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
 
-        const uniform_window_size = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_resolution");
+        const uniform_window_size = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_resolution");
         // gl.Uniform2f(uniform_window_size, @floatFromInt(width), @floatFromInt(height));
-        gl.Uniform2f(uniform_window_size, @floatFromInt(render_w), @floatFromInt(render_h));
+        gl.Uniform2f(uniform_window_size, @floatFromInt(appState.renderer.render_w), @floatFromInt(appState.renderer.render_h));
 
-        const uniform_mouse_pos = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_mouse");
+        const uniform_mouse_pos = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_mouse");
         gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
 
         const current_time: f64 = c.glfwGetTime();
-        const uniform_time = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_time");
+        const uniform_time = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_time");
         gl.Uniform1f(uniform_time, @floatCast(current_time));
 
-        const uniform_frame = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_frame");
-        gl.Uniform1i(uniform_frame, @intCast(frame));
+        const uniform_frame = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_frame");
+        gl.Uniform1i(uniform_frame, @intCast(appState.renderer.total_accumulated_frames));
 
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_spf"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_spf"), 1);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
-        const uniform_temperatureRGB = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tempColor");
+        const uniform_temperatureRGB = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_tempColor");
         gl.Uniform3f(uniform_temperatureRGB, temperatureRGB[0], temperatureRGB[1], temperatureRGB[2]);
 
         // yaw and pitch
-        const uniform_cam_rot = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_cameraRot");
-        gl.Uniform2f(uniform_cam_rot, mouse_state.yaw, mouse_state.pitch);
+        const uniform_cam_rot = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_cameraRot");
+        gl.Uniform2f(uniform_cam_rot, appState.scene.yaw, appState.scene.pitch);
 
         //camera position
-        const uniform_cam_pos = gl.GetUniformLocation(programs[@intCast(current_scene)], "u_cameraPos");
-        gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&mouse_state.cam_pos));
+        const uniform_cam_pos = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_cameraPos");
+        gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&appState.scene.cam_pos));
 
         // --- WASD MOVEMENT LOGIC ---
         const speed: f32 = 0.05; // Adjust this to change movement speed
@@ -442,33 +406,33 @@ pub fn main() !void {
 
         // Forward (W) / Backward (S)
         if (c.glfwGetKey(window, c.GLFW_KEY_W) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[0] -= @sin(mouse_state.yaw) * speed;
-            mouse_state.cam_pos[2] -= @cos(mouse_state.yaw) * speed;
+            appState.scene.cam_pos[0] -= @sin(appState.scene.yaw) * speed;
+            appState.scene.cam_pos[2] -= @cos(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         if (c.glfwGetKey(window, c.GLFW_KEY_S) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[0] += @sin(mouse_state.yaw) * speed;
-            mouse_state.cam_pos[2] += @cos(mouse_state.yaw) * speed;
+            appState.scene.cam_pos[0] += @sin(appState.scene.yaw) * speed;
+            appState.scene.cam_pos[2] += @cos(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         // Left (A) / Right (D)
         if (c.glfwGetKey(window, c.GLFW_KEY_A) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[0] -= @cos(mouse_state.yaw) * speed;
-            mouse_state.cam_pos[2] += @sin(mouse_state.yaw) * speed;
+            appState.scene.cam_pos[0] -= @cos(appState.scene.yaw) * speed;
+            appState.scene.cam_pos[2] += @sin(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         if (c.glfwGetKey(window, c.GLFW_KEY_D) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[0] += @cos(mouse_state.yaw) * speed;
-            mouse_state.cam_pos[2] -= @sin(mouse_state.yaw) * speed;
+            appState.scene.cam_pos[0] += @cos(appState.scene.yaw) * speed;
+            appState.scene.cam_pos[2] -= @sin(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         // Up (Space) / Down (Left Shift)
         if (c.glfwGetKey(window, c.GLFW_KEY_SPACE) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[1] += speed;
+            appState.scene.cam_pos[1] += speed;
             moved_this_frame = true;
         }
         if (c.glfwGetKey(window, c.GLFW_KEY_LEFT_SHIFT) == c.GLFW_PRESS) {
-            mouse_state.cam_pos[1] -= speed;
+            appState.scene.cam_pos[1] -= speed;
             moved_this_frame = true;
         }
 
@@ -479,47 +443,47 @@ pub fn main() !void {
         //textures setup
         gl.ActiveTexture(gl.TEXTURE1);
         gl.BindTexture(gl.TEXTURE_2D, textures[0]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_ground"), 1);
 
         gl.ActiveTexture(gl.TEXTURE2);
         gl.BindTexture(gl.TEXTURE_2D, textures[1]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground_roughness"), 2);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_ground_roughness"), 2);
 
         gl.ActiveTexture(gl.TEXTURE3);
         gl.BindTexture(gl.TEXTURE_2D, textures[2]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_ground_disp"), 3);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_ground_disp"), 3);
 
         gl.ActiveTexture(gl.TEXTURE4);
         gl.BindTexture(gl.TEXTURE_2D, textures[3]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx"), 4);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_onyx"), 4);
 
         gl.ActiveTexture(gl.TEXTURE5);
         gl.BindTexture(gl.TEXTURE_2D, textures[4]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx_roughness"), 5);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_onyx_roughness"), 5);
 
         gl.ActiveTexture(gl.TEXTURE6);
         gl.BindTexture(gl.TEXTURE_2D, textures[5]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_onyx_displacement"), 6);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_onyx_displacement"), 6);
 
         gl.ActiveTexture(gl.TEXTURE7);
         gl.BindTexture(gl.TEXTURE_2D, textures[6]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile"), 7);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_tile"), 7);
 
         gl.ActiveTexture(gl.TEXTURE8);
         gl.BindTexture(gl.TEXTURE_2D, textures[7]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile_roughness"), 8);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_tile_roughness"), 8);
 
         gl.ActiveTexture(gl.TEXTURE9);
         gl.BindTexture(gl.TEXTURE_2D, textures[8]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_tile_displacement"), 9);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_tile_displacement"), 9);
 
         //drawing fbo
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[current]);
-        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(current_scene)], "u_pass1"), 0);
+        gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
-        if ((mouse_state.moved or moved_this_frame) and imgui_io.*.WantCaptureMouse == false) {
+        if ((appState.mouse.moved or moved_this_frame) and imgui_io.*.WantCaptureMouse == false) {
             const clear_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
             gl.ClearBufferfv(gl.COLOR, 0, @ptrCast(&clear_color));
 
@@ -529,8 +493,8 @@ pub fn main() !void {
 
             // Re-bind destination
             gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
-            frame = 0;
-            mouse_state.moved = false;
+            appState.renderer.total_accumulated_frames = 0;
+            appState.mouse.moved = false;
         }
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
         //invert framebuffer
@@ -551,15 +515,15 @@ pub fn main() !void {
         gl.Uniform2f(gl.GetUniformLocation(mainProg, "u_resolution"), @floatFromInt(width), @floatFromInt(height));
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
 
-        if (want_to_save) {
+        if (appState.renderer.want_to_save) {
             saveScreenshot(allocator, win_w, win_h, rendered_frame) catch |err| {
                 std.log.err("Failed to save screenshot: {}", .{err});
             };
             rendered_frame += 1;
-            want_to_save = false;
+            appState.renderer.want_to_save = false;
 
             //temp
-            mouse_state.moved = true;
+            appState.mouse.moved = true;
             light_temperature -= 100;
         }
 
@@ -570,13 +534,13 @@ pub fn main() !void {
         }
         c.cImGui_ImplOpenGL3_RenderDrawData(c.ImGui_GetDrawData());
 
-        frame += 1;
+        appState.renderer.total_accumulated_frames += 1;
         spf_frames += 1;
         const spf_current_time = c.glfwGetTime();
-        if (spf_current_time - last_time >= 1.0) {
-            seconds_per_frame = 1000 / @as(f32, @floatFromInt(spf_frames));
+        if (spf_current_time - appState.metrics.last_time >= 1.0) {
+            appState.metrics.ms_per_frame = 1000 / @as(f32, @floatFromInt(spf_frames));
             spf_frames = 0;
-            last_time += 1.0;
+            appState.metrics.last_time += 1.0;
         }
         c.glfwSwapBuffers(window);
         // if (light_temperature <= 900) {
