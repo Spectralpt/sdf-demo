@@ -36,4 +36,10 @@ const renderer_state = struct {
     want_to_save: bool,
 };
 
-const app_state = struct { mouse: mouse_state = .{}, imgui: imgui_state = .{}, scene: scene_state = .{}, metrics: metrics_state = .{}, renderer: ren };
+const app_state = struct {
+    mouse: mouse_state = .{},
+    imgui: imgui_state = .{},
+    scene: scene_state = .{},
+    metrics: metrics_state = .{},
+    renderer: renderer_state = .{},
+};
