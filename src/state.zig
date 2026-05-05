@@ -45,4 +45,5 @@ pub const app_state = struct {
     window_w: c_int = 0,
     window_h: c_int = 0,
     window_title: []const u8 = "",
+    window: ?*c.struct_GLFWwindow = @ptrFromInt(0),
 };

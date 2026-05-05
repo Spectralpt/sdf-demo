@@ -75,3 +75,48 @@ pub fn loadTexture(path: [:0]const u8, index: u32) !void {
     );
     gl.GenerateMipmap(gl.TEXTURE_2D);
 }
+
+//temp image saver, ill do my own probably
+pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int, file_n: u32) !void {
+    const w = @as(usize, @intCast(width));
+    const h = @as(usize, @intCast(height));
+    const stride = w * 3; // 3 bytes per pixel (RGB)
+    const total_size = stride * h;
+
+    // 1. Allocate a buffer to hold the pixel data
+    const pixels = try allocator.alloc(u8, total_size);
+    defer allocator.free(pixels);
+
+    // 2. Read the pixels from the currently active OpenGL Framebuffer
+    // We use gl.RGB and gl.UNSIGNED_BYTE to get standard 24-bit color
+    gl.ReadPixels(0, 0, width, height, gl.RGB, gl.UNSIGNED_BYTE, pixels.ptr);
+
+    // 3. Flip the image vertically
+    // OpenGL's (0,0) is bottom-left, but image files expect (0,0) at top-left
+    const half_h = h / 2;
+    for (0..half_h) |y| {
+        const top_idx = y * stride;
+        const bot_idx = (h - 1 - y) * stride;
+
+        for (0..stride) |x| {
+            const temp = pixels[top_idx + x];
+            pixels[top_idx + x] = pixels[bot_idx + x];
+            pixels[bot_idx + x] = temp;
+        }
+    }
+
+    // 4. Write to a PPM file
+    const filename = try std.fmt.allocPrint(allocator, "render/frame-{d:0>3}.ppm", .{file_n});
+    const file = try std.fs.cwd().createFile(filename, .{});
+    defer file.close();
+
+    // Format the header text into a temporary stack buffer
+    var header_buf: [64]u8 = undefined;
+    const header = try std.fmt.bufPrint(&header_buf, "P6\n{} {}\n255\n", .{ w, h });
+
+    // Dump the header, then dump the raw pixels directly to the file!
+    try file.writeAll(header);
+    try file.writeAll(pixels);
+
+    std.debug.print("Screenshot saved to render.ppm!\n", .{});
+}

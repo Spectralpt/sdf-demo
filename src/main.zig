@@ -6,6 +6,7 @@ const utils = @import("utils.zig");
 const state = @import("state.zig");
 const cli = @import("cli.zig");
 const c = @import("c.zig").c;
+const ui = @import("ui.zig");
 // const Scene = @import("scene.zig");
 
 fn errorCallback(errn: c_int, str: [*c]const u8) callconv(std.builtin.CallingConvention.c) void {
@@ -64,51 +65,6 @@ fn mouseButtonCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mod
     }
 }
 
-//temp image saver, ill do my own probably
-fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int, file_n: u32) !void {
-    const w = @as(usize, @intCast(width));
-    const h = @as(usize, @intCast(height));
-    const stride = w * 3; // 3 bytes per pixel (RGB)
-    const total_size = stride * h;
-
-    // 1. Allocate a buffer to hold the pixel data
-    const pixels = try allocator.alloc(u8, total_size);
-    defer allocator.free(pixels);
-
-    // 2. Read the pixels from the currently active OpenGL Framebuffer
-    // We use gl.RGB and gl.UNSIGNED_BYTE to get standard 24-bit color
-    gl.ReadPixels(0, 0, width, height, gl.RGB, gl.UNSIGNED_BYTE, pixels.ptr);
-
-    // 3. Flip the image vertically
-    // OpenGL's (0,0) is bottom-left, but image files expect (0,0) at top-left
-    const half_h = h / 2;
-    for (0..half_h) |y| {
-        const top_idx = y * stride;
-        const bot_idx = (h - 1 - y) * stride;
-
-        for (0..stride) |x| {
-            const temp = pixels[top_idx + x];
-            pixels[top_idx + x] = pixels[bot_idx + x];
-            pixels[bot_idx + x] = temp;
-        }
-    }
-
-    // 4. Write to a PPM file
-    const filename = try std.fmt.allocPrint(allocator, "render/frame-{d:0>3}.ppm", .{file_n});
-    const file = try std.fs.cwd().createFile(filename, .{});
-    defer file.close();
-
-    // Format the header text into a temporary stack buffer
-    var header_buf: [64]u8 = undefined;
-    const header = try std.fmt.bufPrint(&header_buf, "P6\n{} {}\n255\n", .{ w, h });
-
-    // Dump the header, then dump the raw pixels directly to the file!
-    try file.writeAll(header);
-    try file.writeAll(pixels);
-
-    std.debug.print("Screenshot saved to render.ppm!\n", .{});
-}
-
 pub fn main() !void {
     var procs: gl.ProcTable = undefined;
 
@@ -132,20 +88,20 @@ pub fn main() !void {
     c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, 4);
     c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, 6);
     c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
-    const window = c.glfwCreateWindow(appState.window_w, appState.window_h, appState.window_title.ptr, null, null);
-    if (window == null) {
+    appState.window = c.glfwCreateWindow(appState.window_w, appState.window_h, appState.window_title.ptr, null, null);
+    if (appState.window == null) {
         return;
     }
-    defer c.glfwDestroyWindow(window);
+    defer c.glfwDestroyWindow(appState.window);
 
-    c.glfwSetWindowUserPointer(window, &appState);
+    c.glfwSetWindowUserPointer(appState.window, &appState);
 
     // Callbacks
-    _ = c.glfwSetCursorPosCallback(window, cursorPosCallback);
+    _ = c.glfwSetCursorPosCallback(appState.window, cursorPosCallback);
     _ = c.glfwSetErrorCallback(errorCallback);
-    _ = c.glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    _ = c.glfwSetMouseButtonCallback(appState.window, mouseButtonCallback);
 
-    c.glfwMakeContextCurrent(window);
+    c.glfwMakeContextCurrent(appState.window);
     c.glfwSwapInterval(1);
 
     if (!procs.init(c.glfwGetProcAddress)) return error.InitFailed;
@@ -234,8 +190,8 @@ pub fn main() !void {
         const frag_source = try shaders.readFileToString(allocator, path);
         const frag = try shaders.compileShader(allocator, frag_source, gl.FRAGMENT_SHADER);
 
-        const shders = [_]u32{ vert, frag };
-        programs[i] = try shaders.setupShaderProgram(allocator, shders[0..]);
+        const compiled_shaders = [_]u32{ vert, frag };
+        programs[i] = try shaders.setupShaderProgram(allocator, compiled_shaders[0..]);
 
         defer allocator.free(frag_source);
     }
@@ -277,22 +233,19 @@ pub fn main() !void {
 
     c.ImGui_StyleColorsDark(null);
 
-    _ = c.cImGui_ImplGlfw_InitForOpenGL(window, true);
+    _ = c.cImGui_ImplGlfw_InitForOpenGL(appState.window, true);
     defer c.cImGui_ImplGlfw_Shutdown();
 
     _ = c.cImGui_ImplOpenGL3_InitEx(GLSL_VERSION);
     defer c.cImGui_ImplOpenGL3_Shutdown();
 
-    // var is_active = false;
-    // var current_scene: c_int = 0;
-    // const imgui_window = c.ImVec2{ .x = 0, .y = 0 };
-    // const imgui_window_pos = c.ImVec2{ .x = 20, .y = 20 };
-    // gl.ClearColor(0.1, 0.1, 0.1, 1);
-    // var frame: u32 = 0;
+    // TODO:
+    // figure out what to do this these variables
+    // probably want to remove rendered frame on the
+    // screenshot and video rework
+    // spf_frames can maybe go to state
     var spf_frames: u32 = 0;
-    // var seconds_per_frame: f32 = 0;
     var rendered_frame: u32 = 1;
-    // var want_to_save: bool = false;
 
     appState.imgui.is_active = false;
     appState.renderer.current_scene = 0;
@@ -306,61 +259,15 @@ pub fn main() !void {
     var light_temperature: i32 = 5000;
 
     appState.metrics.last_time = c.glfwGetTime();
-    while (c.glfwWindowShouldClose(window) == 0) {
+    while (c.glfwWindowShouldClose(appState.window) == 0) {
         c.glfwPollEvents();
 
         // UI
-        const imgui_io = c.ImGui_GetIO();
-        c.cImGui_ImplOpenGL3_NewFrame();
-        c.cImGui_ImplGlfw_NewFrame();
-        c.ImGui_NewFrame();
-
-        c.ImGui_SetNextWindowSize(appState.imgui.window_size, c.ImGuiCond_FirstUseEver);
-        c.ImGui_SetNextWindowPos(appState.imgui.window_pos, c.ImGuiCond_FirstUseEver);
-        _ = c.ImGui_Begin("Demos", &appState.imgui.is_active, c.ImGuiWindowFlags_NoSavedSettings);
-        if (c.ImGui_Button("Save Render")) {
-            appState.renderer.want_to_save = true;
-            var w: c_int = 0;
-            var h: c_int = 0;
-            c.glfwGetFramebufferSize(window, &w, &h);
-
-            // Note: In Zig, error handling in UI callbacks can be tricky.
-            // We use 'catch' to prevent a crash if the disk is full.
-            saveScreenshot(allocator, w, h, appState.renderer.total_accumulated_frames) catch |err| {
-                std.log.err("Failed to save screenshot: {}", .{err});
-            };
-        }
-        if (c.ImGui_BeginCombo(" ", frag_paths[@intCast(appState.renderer.current_scene)], 0)) {
-            for (frag_paths, 0..) |scene, i| {
-                if (c.ImGui_Selectable(scene)) {
-                    appState.renderer.current_scene = @intCast(i);
-                    appState.renderer.total_accumulated_frames = 0;
-                }
-            }
-            c.ImGui_EndCombo();
-        }
-        c.ImGui_Spacing();
-        c.ImGui_Text("Frame: %d", appState.renderer.total_accumulated_frames);
-        c.ImGui_Text("Frame time: %.2f ms", appState.metrics.ms_per_frame);
-        c.ImGui_SeparatorText("Position");
-        c.ImGui_Text("x: %.2f", appState.scene.cam_pos[0]);
-        c.ImGui_Text("y: %.2f", appState.scene.cam_pos[1]);
-        c.ImGui_Text("z: %.2f", appState.scene.cam_pos[2]);
-        c.ImGui_Text("yaw: %.2f", appState.scene.yaw);
-        c.ImGui_Text("pitch: %.2f", appState.scene.pitch);
-
-        c.ImGui_Spacing();
-        c.ImGui_Spacing();
-        if (c.ImGui_SliderInt("Color temperature", @ptrCast(&light_temperature), 1000, 7000)) {
-            // std.debug.print("temp:{any}\n", .{light_temperature});
-        }
-        c.ImGui_End();
-
-        c.ImGui_Render();
+        try ui.render(&appState, allocator, &frag_paths);
 
         var width: c_int = 0;
         var height: c_int = 0;
-        c.glfwGetFramebufferSize(window, &width, &height);
+        c.glfwGetFramebufferSize(appState.window, &width, &height);
         gl.Viewport(0, 0, appState.renderer.render_w, appState.renderer.render_h);
         gl.Clear(gl.COLOR_BUFFER_BIT);
 
@@ -370,7 +277,7 @@ pub fn main() !void {
         gl.UseProgram(programs[@intCast(appState.renderer.current_scene)]);
         var mouse_x: f64 = undefined;
         var mouse_y: f64 = undefined;
-        c.glfwGetCursorPos(window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
+        c.glfwGetCursorPos(appState.window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
 
         const uniform_window_size = gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_resolution");
         // gl.Uniform2f(uniform_window_size, @floatFromInt(width), @floatFromInt(height));
@@ -405,33 +312,33 @@ pub fn main() !void {
         var moved_this_frame = false;
 
         // Forward (W) / Backward (S)
-        if (c.glfwGetKey(window, c.GLFW_KEY_W) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_W) == c.GLFW_PRESS) {
             appState.scene.cam_pos[0] -= @sin(appState.scene.yaw) * speed;
             appState.scene.cam_pos[2] -= @cos(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
-        if (c.glfwGetKey(window, c.GLFW_KEY_S) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_S) == c.GLFW_PRESS) {
             appState.scene.cam_pos[0] += @sin(appState.scene.yaw) * speed;
             appState.scene.cam_pos[2] += @cos(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         // Left (A) / Right (D)
-        if (c.glfwGetKey(window, c.GLFW_KEY_A) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_A) == c.GLFW_PRESS) {
             appState.scene.cam_pos[0] -= @cos(appState.scene.yaw) * speed;
             appState.scene.cam_pos[2] += @sin(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
-        if (c.glfwGetKey(window, c.GLFW_KEY_D) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_D) == c.GLFW_PRESS) {
             appState.scene.cam_pos[0] += @cos(appState.scene.yaw) * speed;
             appState.scene.cam_pos[2] -= @sin(appState.scene.yaw) * speed;
             moved_this_frame = true;
         }
         // Up (Space) / Down (Left Shift)
-        if (c.glfwGetKey(window, c.GLFW_KEY_SPACE) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_SPACE) == c.GLFW_PRESS) {
             appState.scene.cam_pos[1] += speed;
             moved_this_frame = true;
         }
-        if (c.glfwGetKey(window, c.GLFW_KEY_LEFT_SHIFT) == c.GLFW_PRESS) {
+        if (c.glfwGetKey(appState.window, c.GLFW_KEY_LEFT_SHIFT) == c.GLFW_PRESS) {
             appState.scene.cam_pos[1] -= speed;
             moved_this_frame = true;
         }
@@ -483,6 +390,7 @@ pub fn main() !void {
         gl.Uniform1i(gl.GetUniformLocation(programs[@intCast(appState.renderer.current_scene)], "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
+        const imgui_io = c.ImGui_GetIO();
         if ((appState.mouse.moved or moved_this_frame) and imgui_io.*.WantCaptureMouse == false) {
             const clear_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
             gl.ClearBufferfv(gl.COLOR, 0, @ptrCast(&clear_color));
@@ -505,7 +413,7 @@ pub fn main() !void {
 
         var win_w: c_int = 0;
         var win_h: c_int = 0;
-        c.glfwGetFramebufferSize(window, &win_w, &win_h);
+        c.glfwGetFramebufferSize(appState.window, &win_w, &win_h);
         gl.Viewport(0, 0, win_w, win_h); // Shrink viewport for the screen
 
         gl.UseProgram(mainProg);
@@ -516,7 +424,7 @@ pub fn main() !void {
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
 
         if (appState.renderer.want_to_save) {
-            saveScreenshot(allocator, win_w, win_h, rendered_frame) catch |err| {
+            utils.saveScreenshot(allocator, win_w, win_h, rendered_frame) catch |err| {
                 std.log.err("Failed to save screenshot: {}", .{err});
             };
             rendered_frame += 1;
@@ -542,7 +450,7 @@ pub fn main() !void {
             spf_frames = 0;
             appState.metrics.last_time += 1.0;
         }
-        c.glfwSwapBuffers(window);
+        c.glfwSwapBuffers(appState.window);
         // if (light_temperature <= 900) {
         //     std.process.exit(0);
         // }
