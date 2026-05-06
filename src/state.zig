@@ -1,4 +1,5 @@
 const c = @import("c.zig").c;
+const Scene = @import("scene.zig").Scene;
 
 pub const mouse_state = struct {
     first_mouse: bool = false,
@@ -20,6 +21,7 @@ pub const scene_state = struct {
     cam_pos: [3]f32 = .{ 0, 0, 0 },
     yaw: f32 = 0,
     pitch: f32 = 0,
+    bound_texture_count: u32 = 0,
 };
 
 pub const metrics_state = struct {
@@ -39,11 +41,18 @@ pub const renderer_state = struct {
 pub const app_state = struct {
     mouse: mouse_state = .{},
     imgui: imgui_state = .{},
-    scene: scene_state = .{},
+    scene: struct {
+        data: ?Scene = null,
+        state: scene_state = .{},
+    } = .{},
     metrics: metrics_state = .{},
     renderer: renderer_state = .{},
     window_w: c_int = 0,
     window_h: c_int = 0,
     window_title: []const u8 = "",
     window: ?*c.struct_GLFWwindow = @ptrFromInt(0),
+
+    pub fn setScene(self: *app_state, scene: Scene) void {
+        self.renderer.current_scene = scene.id;
+    }
 };

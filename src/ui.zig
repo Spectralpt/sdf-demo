@@ -39,11 +39,11 @@ pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, frag_pat
     c.ImGui_Text("Frame: %d", appState.renderer.total_accumulated_frames);
     c.ImGui_Text("Frame time: %.2f ms", appState.metrics.ms_per_frame);
     c.ImGui_SeparatorText("Position");
-    c.ImGui_Text("x: %.2f", appState.scene.cam_pos[0]);
-    c.ImGui_Text("y: %.2f", appState.scene.cam_pos[1]);
-    c.ImGui_Text("z: %.2f", appState.scene.cam_pos[2]);
-    c.ImGui_Text("yaw: %.2f", appState.scene.yaw);
-    c.ImGui_Text("pitch: %.2f", appState.scene.pitch);
+    c.ImGui_Text("x: %.2f", appState.scene.state.cam_pos[0]);
+    c.ImGui_Text("y: %.2f", appState.scene.state.cam_pos[1]);
+    c.ImGui_Text("z: %.2f", appState.scene.state.cam_pos[2]);
+    c.ImGui_Text("yaw: %.2f", appState.scene.state.yaw);
+    c.ImGui_Text("pitch: %.2f", appState.scene.state.pitch);
 
     c.ImGui_Spacing();
     c.ImGui_Spacing();

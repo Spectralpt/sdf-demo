@@ -2,6 +2,8 @@ const std = @import("std");
 const math = std.math;
 const zstbi = @import("zstbi");
 const gl = @import("gl");
+const state = @import("state.zig");
+const c = @import("c.zig").c;
 
 pub fn kelvinToColor(temp_in: i32) [3]f32 {
     // const temp = temp_in / 100;
@@ -119,4 +121,91 @@ pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int,
     try file.writeAll(pixels);
 
     std.debug.print("Screenshot saved to render.ppm!\n", .{});
+}
+
+pub fn bindTexture(texture_id: u32, uniform_name: [:0]const u8, appState: *state.app_state) !void {
+    const current_max_texture = appState.scene.state.bound_texture_count;
+
+    //gl.TEXTURE0 is reserved for the path tracing pass
+    gl.ActiveTexture(@as(u32, gl.TEXTURE1) + current_max_texture);
+    gl.BindTexture(gl.TEXTURE_2D, texture_id);
+    gl.Uniform1i(gl.GetUniformLocation(appState.scene.data.?.shader_program, uniform_name.ptr), current_max_texture + 1);
+    appState.scene.state.bound_texture_count += 1;
+}
+
+pub fn fullscreenQuad() !u32 {
+    const vertices = [_]f32{
+        -1.0, 1.0, 0.0, //top left
+        -1.0, -1.0, 0.0, //bottom left
+        1.0, -1.0, 0.0, //bottom right
+        1.0, 1.0, 0.0, //top right
+    };
+
+    const indices = [_]u32{
+        0, 1, 2, // 1
+        0, 2, 3, // 2
+    };
+
+    var VAO: u32 = undefined;
+    gl.GenVertexArrays(1, @ptrCast(&VAO));
+    gl.BindVertexArray(VAO);
+
+    var VBO: u32 = undefined;
+    //create the vbo
+    gl.GenBuffers(1, @ptrCast(&VBO));
+    //make this the current active vbo
+    gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
+    //push the data into it
+    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * vertices.len, &vertices, gl.STATIC_DRAW);
+    //specify how the data inside the vbo is read
+    gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
+    //dont really know
+    gl.EnableVertexAttribArray(0);
+
+    var EBO: u32 = undefined;
+    gl.GenBuffers(1, @ptrCast(&EBO));
+    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
+    gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @sizeOf(u32) * indices.len, &indices, gl.STATIC_DRAW);
+
+    return EBO;
+}
+
+pub fn handleMovement(appState: *state.app_state) bool {
+    // --- WASD MOVEMENT LOGIC ---
+    const speed: f32 = 0.05; // Adjust this to change movement speed
+    var moved_this_frame = false;
+
+    // Forward (W) / Backward (S)
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_W) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[0] -= @sin(appState.scene.state.yaw) * speed;
+        appState.scene.state.cam_pos[2] -= @cos(appState.scene.state.yaw) * speed;
+        moved_this_frame = true;
+    }
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_S) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[0] += @sin(appState.scene.state.yaw) * speed;
+        appState.scene.state.cam_pos[2] += @cos(appState.scene.state.yaw) * speed;
+        moved_this_frame = true;
+    }
+    // Left (A) / Right (D)
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_A) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[0] -= @cos(appState.scene.state.yaw) * speed;
+        appState.scene.state.cam_pos[2] += @sin(appState.scene.state.yaw) * speed;
+        moved_this_frame = true;
+    }
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_D) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[0] += @cos(appState.scene.state.yaw) * speed;
+        appState.scene.state.cam_pos[2] -= @sin(appState.scene.state.yaw) * speed;
+        moved_this_frame = true;
+    }
+    // Up (Space) / Down (Left Shift)
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_SPACE) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[1] += speed;
+        moved_this_frame = true;
+    }
+    if (c.glfwGetKey(appState.window, c.GLFW_KEY_LEFT_SHIFT) == c.GLFW_PRESS) {
+        appState.scene.state.cam_pos[1] -= speed;
+        moved_this_frame = true;
+    }
+
+    return moved_this_frame;
 }

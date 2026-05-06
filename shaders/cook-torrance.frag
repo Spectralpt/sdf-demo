@@ -1,7 +1,7 @@
 #version 410
 
 uniform vec2 u_resolution; // viewport size in pixels (width, height)
-uniform int u_frame;       // frame increment counter
+uniform int u_frame; // frame increment counter
 uniform vec2 u_mouse;
 uniform vec2 u_cameraRot;
 uniform vec3 u_cameraPos;
@@ -34,21 +34,21 @@ const float c_rayPosNormalNudge = 0.01f;
 
 vec3 LessThan(vec3 f, float value) {
   return vec3((f.x < value) ? 1.0f : 0.0f, (f.y < value) ? 1.0f : 0.0f,
-              (f.z < value) ? 1.0f : 0.0f);
+    (f.z < value) ? 1.0f : 0.0f);
 }
 
 vec3 LinearToSRGB(vec3 rgb) {
   rgb = clamp(rgb, 0.0f, 1.0f);
 
   return mix(pow(rgb, vec3(1.0f / 2.4f)) * 1.055f - 0.055f, rgb * 12.92f,
-             LessThan(rgb, 0.0031308f));
+    LessThan(rgb, 0.0031308f));
 }
 
 vec3 SRGBToLinear(vec3 rgb) {
   rgb = clamp(rgb, 0.0f, 1.0f);
 
   return mix(pow(((rgb + 0.055f) / 1.055f), vec3(2.4f)), rgb / 12.92f,
-             LessThan(rgb, 0.04045f));
+    LessThan(rgb, 0.04045f));
 }
 
 // ACES tone mapping curve fit to go from HDR to LDR
@@ -63,7 +63,7 @@ vec3 ACESFilm(vec3 x) {
 }
 
 float FresnelReflectAmount(float n1, float n2, vec3 normal, vec3 incident,
-                           float f0, float f90) {
+  float f0, float f90) {
   // Schlick aproximation
   float r0 = (n1 - n2) / (n1 + n2);
   r0 *= r0;
@@ -100,7 +100,7 @@ struct Ray {
 };
 
 struct Material {
-  vec3 albedo;     // Base color (surface reflections/F0)
+  vec3 albedo; // Base color (surface reflections/F0)
   float roughness; // 0.0 = smooth, 1.0 = frosted
   float metallic;
   vec3 emissive;
@@ -123,7 +123,9 @@ struct SRayHitInfo {
   Material material;
 };
 
-float opUnion(float a, float b) { return min(a, b); }
+float opUnion(float a, float b) {
+  return min(a, b);
+}
 
 SDF opUnionID(SDF res1, SDF res2) {
   if (res1.distance < res2.distance) {
@@ -197,9 +199,13 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
   return normalize(sampleVec);
 }
 
-float dot2(vec3 v) { return dot(v, v); }
+float dot2(vec3 v) {
+  return dot(v, v);
+}
 
-float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdSphere(vec3 p, float r) {
+  return length(p) - r;
+}
 
 uint wang_hash(inout uint seed) {
   seed = uint(seed ^ uint(61)) ^ uint(seed >> uint(16));
@@ -250,9 +256,9 @@ vec3 triPlanar(sampler2D tex, vec3 p, vec3 normal) {
   normal = pow(normal, vec3(5.0));
   normal /= normal.x + normal.y + normal.z;
   return (texture(tex, p.xy * 0.5 + 0.5) * normal.z +
-          texture(tex, p.xz * 0.5 + 0.5) * normal.y +
-          texture(tex, p.yz * 0.5 + 0.5) * normal.x)
-      .rgb;
+    texture(tex, p.xz * 0.5 + 0.5) * normal.y +
+    texture(tex, p.yz * 0.5 + 0.5) * normal.x)
+  .rgb;
 }
 
 vec3 triPlanarNormal(sampler2D tex, vec3 p, vec3 geomNormal) {
@@ -355,8 +361,8 @@ SDF map(vec3 p) {
 vec3 getNormal(vec3 p) {
   vec2 e = vec2(EPSILON, 0.0);
   return normalize(vec3(map(p + e.xyy).distance - map(p - e.xyy).distance,
-                        map(p + e.yxy).distance - map(p - e.yxy).distance,
-                        map(p + e.yyx).distance - map(p - e.yyx).distance));
+      map(p + e.yxy).distance - map(p - e.yxy).distance,
+      map(p + e.yyx).distance - map(p - e.yyx).distance));
 }
 
 SDF rayMarch(vec3 ro, vec3 rd) {
@@ -383,13 +389,13 @@ vec3 applyNormalMap(vec3 geomNormal, vec3 texNormal) {
 
   // Build the TBN (Tangent, Bitangent, Normal) coordinate system
   vec3 up =
-      abs(geomNormal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    abs(geomNormal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
   vec3 tangent = normalize(cross(up, geomNormal));
   vec3 bitangent = cross(geomNormal, tangent);
 
   // Rotate the texture's bump direction to match the geometry's surface
   vec3 finalNormal = tangent * texNormal.x + bitangent * texNormal.y +
-                     geomNormal * texNormal.z;
+      geomNormal * texNormal.z;
 
   return normalize(finalNormal);
 }
@@ -397,58 +403,58 @@ vec3 applyNormalMap(vec3 geomNormal, vec3 texNormal) {
 Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
   Material material = GetZeroedMaterial();
   switch (int(object.id)) {
-  // white light
-  case 0:
+    // white light
+    case 0:
     // material.emissive = vec3(1, 0.7529422167760779, 0.5775804404296506)
     // * 20.0f; material.emissive = vec3(1.0) * 20.0f;
     vec3 color = SRGBToLinear(u_tempColor);
     material.emissive = color * 20.0f;
     material.albedo = vec3(0);
     break;
-  //
-  case 1:
+    //
+    case 1:
     material.emissive = vec3(0.0, 0.0, 0.0);
     material.albedo = vec3(0.1, 0.7, 0.1);
     break;
-  // white
-  case 2:
+    // white
+    case 2:
     material.emissive = vec3(0.0, 0.0, 0.0);
     material.albedo = vec3(0.7, 0.7, 0.7);
     break;
-  // red
-  case 3:
+    // red
+    case 3:
     material.emissive = vec3(0.0, 0.0, 0.0);
     material.albedo = vec3(0.7, 0.1, 0.1);
     break;
-  // back wall
-  case 4:
+    // back wall
+    case 4:
     material.emissive = vec3(0.0, 0.0, 0.0);
     float stripe = mod(floor(p.x * 20.0), 2.0);
     material.albedo =
-        mix(vec3(0.7f, 0.7f, 0.7f), vec3(0.2f, 0.2f, 0.2f), stripe);
+      mix(vec3(0.7f, 0.7f, 0.7f), vec3(0.2f, 0.2f, 0.2f), stripe);
     // material.albedo = vec3(0.7, 0.7, 0.7);
     break;
-  // left wall
-  case 5:
+    // left wall
+    case 5:
     material.emissive = vec3(0.0, 0.0, 0.0);
     material.albedo = vec3(0.7f, 0.1f, 0.1f);
     break;
-  // right wall
-  case 6:
+    // right wall
+    case 6:
     material.emissive = vec3(0.0, 0.0, 0.0);
     material.albedo = vec3(0.1f, 0.7f, 0.1f);
     break;
-  case 7:
+    case 7:
     material.albedo = SRGBToLinear(triPlanar(u_onyx, p, normal).rgb);
     material.metallic = 0.0;
     material.roughness = triPlanar(u_onyx_roughness, p, normal).r;
     break;
-  case 8:
+    case 8:
     material.albedo = vec3(0.8, 0.1, 0.1); // Red
-    material.metallic = 0.0;               // Not a metal
-    material.roughness = 1.0;              // Quite rough
+    material.metallic = 0.0; // Not a metal
+    material.roughness = 1.0; // Quite rough
     break;
-  case 9:
+    case 9:
     // vec3 texColor = triPlanar(u_ground, p, normal).rgb;
     // float texRough = triPlanar(u_ground_roughness, p, normal).r;
     vec3 texColor = texture(u_ground, p.xz).rgb;
@@ -461,8 +467,8 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     // normal = triPlanarNormal(u_ground_normal, p, normal);
 
     break;
-  // glass
-  case 10:
+    // glass
+    case 10:
     material.albedo = vec3(0.0, 0.0, 0.0);
     material.metallic = 0.0;
     material.transmission = 1.0;
@@ -470,17 +476,17 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
     material.roughness = 0.02;
     material.absorption = vec3(0.0);
     break;
-  case 11:
+    case 11:
     // material.albedo = SRGBToLinear(triPlanar(u_tile, p, normal).rgb);
     // material.roughness = triPlanar(u_tile_roughness, p, normal).r;
     material.albedo = SRGBToLinear(texture(u_tile, p.xy).rgb);
     material.roughness = texture(u_tile_roughness, p.xy).r;
     material.metallic = 0.0;
     break;
-  case 12:
+    case 12:
     material.albedo = vec3(1.0, 1.0, 0.0);
     break;
-  default:
+    default:
     material.albedo = vec3(1.0, 0.0, 1.0); // bright magenta for unhandled ids
     break;
   }
@@ -488,7 +494,7 @@ Material getMaterial(SDF object, vec3 p, inout vec3 normal) {
 }
 
 void getCurrentHit(vec3 rayOrigin, vec3 rayDirection,
-                   inout SRayHitInfo hitInfo) {
+  inout SRayHitInfo hitInfo) {
   SDF object = rayMarch(rayOrigin, rayDirection);
   if (object.distance < MAX_DIST) {
     hitInfo.dist = object.distance;
@@ -506,7 +512,7 @@ void getCurrentHit(vec3 rayOrigin, vec3 rayDirection,
 }
 
 vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir,
-                    inout uint rngState) {
+  inout uint rngState) {
   // initialize
   vec3 ret = vec3(0.0f, 0.0f, 0.0f);
   vec3 throughput = vec3(1.0f, 1.0f, 1.0f);
@@ -538,7 +544,7 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir,
 
     // Base reflection chance (0.04 is the standard F0 for most non-metals)
     float fresnelChance =
-        FresnelReflectAmount(n1, n2, hitInfo.normal, rayDir, 0.04f, 1.0f);
+      FresnelReflectAmount(n1, n2, hitInfo.normal, rayDir, 0.04f, 1.0f);
     // Metals force 100% reflection. Dielectrics reflect based on Fresnel.
     float P_reflect = mix(fresnelChance, 1.0f, hitInfo.material.metallic);
     // Transmission (glass) only happens if the ray didn't reflect
@@ -565,7 +571,7 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir,
       // Dielectric reflections are white, Metal reflections are tinted by the
       // albedo
       vec3 reflectionColor =
-          mix(vec3(1.0f), hitInfo.material.albedo, hitInfo.material.metallic);
+        mix(vec3(1.0f), hitInfo.material.albedo, hitInfo.material.metallic);
       throughput *= reflectionColor;
       throughput /= P_reflect;
     } else if (roll < P_reflect + P_transmit) {
@@ -588,7 +594,7 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir,
 
       // Metals have no diffuse color.
       vec3 diffuseColor =
-          hitInfo.material.albedo * (1.0f - hitInfo.material.metallic);
+        hitInfo.material.albedo * (1.0f - hitInfo.material.metallic);
       throughput *= diffuseColor;
       throughput /= P_diffuse;
     }
@@ -604,7 +610,9 @@ vec3 getColorForRay(in vec3 startRayPos, in vec3 startRayDir,
   return ret;
 }
 
-void pR(inout vec2 p, float a) { p = cos(a) * p + sin(a) * vec2(p.y, -p.x); }
+void pR(inout vec2 p, float a) {
+  p = cos(a) * p + sin(a) * vec2(p.y, -p.x);
+}
 
 mat3 getCam(vec3 ro, vec3 lookAt) {
   vec3 camF = normalize(vec3(lookAt - ro));
@@ -623,8 +631,8 @@ void applyRotation(inout vec3 ro) {
 void main() {
   // RNG setup
   uint state =
-      uint(uint(gl_FragCoord.x) * uint(1973) +
-           uint(gl_FragCoord.y) * uint(9277) + uint(u_frame) * uint(26699)) |
+    uint(uint(gl_FragCoord.x) * uint(1973) +
+        uint(gl_FragCoord.y) * uint(9277) + uint(u_frame) * uint(26699)) |
       uint(1);
   vec3 accumulated_color = vec3(0.0);
   int samples_per_frame = u_spf;
