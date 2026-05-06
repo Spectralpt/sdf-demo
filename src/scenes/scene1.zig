@@ -6,12 +6,12 @@ const shaders = @import("../shaders.zig");
 const std = @import("std");
 
 pub fn init(allocator: std.mem.Allocator) !scene.Scene {
-    const vert_path = "../../shaders/shader.vert";
+    const vert_path = "./shaders/shader.vert";
     const vert_source = try shaders.readFileToString(allocator, vert_path);
     defer allocator.free(vert_source);
     const compiled_vert = try shaders.compileShader(allocator, vert_source, gl.VERTEX_SHADER);
 
-    const frag_path = "../../shaders/cook-torrance.frag";
+    const frag_path = "./shaders/cook-torrance.frag";
     const frag_source = try shaders.readFileToString(allocator, frag_path);
     defer allocator.free(frag_source);
     const compiled_frag = try shaders.compileShader(allocator, frag_source, gl.FRAGMENT_SHADER);
@@ -30,7 +30,7 @@ pub fn init(allocator: std.mem.Allocator) !scene.Scene {
         "textures/Tiles/Displacement.png",
     };
 
-    const texture_names = &[_][:0]u8{
+    const texture_names = &[_][:0]const u8{
         "u_ground",
         "u_ground_roughness",
         "u_ground_disp",

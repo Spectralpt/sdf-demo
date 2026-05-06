@@ -208,53 +208,59 @@ pub fn main() !void {
         // our rendering
 
         //uniforms setup
-        gl.UseProgram(scenes[appState.renderer.current_scene].shader_program);
+        // FIX: this is like really bodgy i need to change the scene state to the one on the whiteboards
+        // makes a lot more sense and facilitates cases like this
+        const current_scene_idx = @as(usize, @intCast(appState.renderer.current_scene));
+        const current_scene = &scenes[current_scene_idx];
+
+        gl.UseProgram(current_scene.shader_program);
         var mouse_x: f64 = undefined;
         var mouse_y: f64 = undefined;
         c.glfwGetCursorPos(appState.window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
 
-        const uniform_window_size = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_resolution");
+        const uniform_window_size = gl.GetUniformLocation(current_scene.shader_program, "u_resolution");
         // gl.Uniform2f(uniform_window_size, @floatFromInt(width), @floatFromInt(height));
         gl.Uniform2f(uniform_window_size, @floatFromInt(appState.renderer.render_w), @floatFromInt(appState.renderer.render_h));
 
-        const uniform_mouse_pos = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_mouse");
+        const uniform_mouse_pos = gl.GetUniformLocation(current_scene.shader_program, "u_mouse");
         gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
 
         const current_time: f64 = c.glfwGetTime();
-        const uniform_time = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_time");
+        const uniform_time = gl.GetUniformLocation(current_scene.shader_program, "u_time");
         gl.Uniform1f(uniform_time, @floatCast(current_time));
 
-        const uniform_frame = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_frame");
+        const uniform_frame = gl.GetUniformLocation(current_scene.shader_program, "u_frame");
         gl.Uniform1i(uniform_frame, @intCast(appState.renderer.total_accumulated_frames));
 
-        gl.Uniform1i(gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_spf"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(current_scene.shader_program, "u_spf"), 1);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
-        const uniform_temperatureRGB = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_tempColor");
+        const uniform_temperatureRGB = gl.GetUniformLocation(current_scene.shader_program, "u_tempColor");
         gl.Uniform3f(uniform_temperatureRGB, temperatureRGB[0], temperatureRGB[1], temperatureRGB[2]);
 
         // yaw and pitch
-        const uniform_cam_rot = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_cameraRot");
+        const uniform_cam_rot = gl.GetUniformLocation(current_scene.shader_program, "u_cameraRot");
         gl.Uniform2f(uniform_cam_rot, appState.scene.state.yaw, appState.scene.state.pitch);
 
         //camera position
-        const uniform_cam_pos = gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_cameraPos");
+        const uniform_cam_pos = gl.GetUniformLocation(current_scene.shader_program, "u_cameraPos");
         gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&appState.scene.state.cam_pos));
 
         // if (frame % 1000 == 0 and frame != 0) {
         //     want_to_save = true;
         // }
 
-        appState.renderer.should_reset_accumulation = utils.handleMovement(appState);
+        appState.renderer.should_reset_accumulation = utils.handleMovement(&appState);
 
-        for (scenes[appState.renderer.current_scene].textures, scenes[appState.renderer.current_scene].texture_names) |texture, name| {
-            utils.bindTexture(texture, name, &appState);
+        appState.scene.state.bound_texture_count = 0;
+        for (current_scene.textures, current_scene.texture_names) |texture, name| {
+            try utils.bindTexture(texture, name, current_scene.shader_program, &appState);
         }
 
         //drawing fbo
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[current]);
-        gl.Uniform1i(gl.GetUniformLocation(scenes[appState.renderer.current_scene].shader_program, "u_pass1"), 0);
+        gl.Uniform1i(gl.GetUniformLocation(current_scene.shader_program, "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
         const imgui_io = c.ImGui_GetIO();

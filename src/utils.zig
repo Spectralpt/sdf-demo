@@ -123,13 +123,14 @@ pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int,
     std.debug.print("Screenshot saved to render.ppm!\n", .{});
 }
 
-pub fn bindTexture(texture_id: u32, uniform_name: [:0]const u8, appState: *state.app_state) !void {
+// FIX: maybe look at how i should i actually do the shader program part, the scenes array would probably fix this
+pub fn bindTexture(texture_id: u32, uniform_name: [:0]const u8, shader_program: u32, appState: *state.app_state) !void {
     const current_max_texture = appState.scene.state.bound_texture_count;
 
     //gl.TEXTURE0 is reserved for the path tracing pass
     gl.ActiveTexture(@as(u32, gl.TEXTURE1) + current_max_texture);
     gl.BindTexture(gl.TEXTURE_2D, texture_id);
-    gl.Uniform1i(gl.GetUniformLocation(appState.scene.data.?.shader_program, uniform_name.ptr), current_max_texture + 1);
+    gl.Uniform1i(gl.GetUniformLocation(shader_program, uniform_name.ptr), @intCast(current_max_texture + 1));
     appState.scene.state.bound_texture_count += 1;
 }
 
