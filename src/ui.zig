@@ -6,7 +6,7 @@ const scene = @import("scene.zig");
 
 // TODO: maybe put frag path in appstate idk man ill figure it out
 // light temperature is also fucked gg, will fix later:tm:
-pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, scenes: []const scene.Scene) !void {
+pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, scenes: []const scene.Scene_metadata) !void {
     // const imgui_io = c.ImGui_GetIO();
     c.cImGui_ImplOpenGL3_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();

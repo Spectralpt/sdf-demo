@@ -7,8 +7,9 @@ const state = @import("state.zig");
 const cli = @import("cli.zig");
 const c = @import("c.zig").c;
 const ui = @import("ui.zig");
-const scene1 = @import("scenes/scene1.zig");
+// const scene1 = @import("scenes/scene1.zig");
 const Scene = @import("scene.zig");
+const scenes = @import("scenes/scenes.zig");
 
 fn errorCallback(errn: c_int, str: [*c]const u8) callconv(std.builtin.CallingConvention.c) void {
     std.log.err("GLFW Error '{}'': {s}", .{ errn, str });
@@ -121,9 +122,20 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
-    const scenes = [_]Scene.Scene{
-        try scene1.init(allocator),
+    const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene.Scene;
+    const scenes_init_fns = [_]SceneInitFn{
+        scenes.sanity.init,
+        scenes.scene1.init,
+        scenes.no_tex.init,
     };
+    // const SceneMetadataInitFn = *const fn () anyerror!Scene.Scene_metadata;
+    const scenes_metadata = [_]Scene.Scene_metadata{
+        try scenes.sanity.init_metadata(),
+        try scenes.scene1.init_metadata(),
+        try scenes.no_tex.init_metadata(),
+    };
+    var current_scene = try scenes_init_fns[@intCast(appState.renderer.current_scene)](allocator);
+    var active_scene_idx: c_int = appState.renderer.current_scene;
 
     // main (tone mapping pass)
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
@@ -195,8 +207,22 @@ pub fn main() !void {
     while (c.glfwWindowShouldClose(appState.window) == 0) {
         c.glfwPollEvents();
 
+        if (appState.renderer.current_scene != active_scene_idx) {
+            if (current_scene.shader_program != 0) {
+                gl.DeleteProgram(current_scene.shader_program);
+            }
+            const new_active_idx = @as(usize, @intCast(appState.renderer.current_scene));
+            current_scene = try scenes_init_fns[new_active_idx](allocator);
+            active_scene_idx = appState.renderer.current_scene;
+
+            appState.scene.data = current_scene;
+            appState.renderer.should_reset_accumulation = true;
+            appState.renderer.total_accumulated_frames = 0;
+            std.debug.print("{any}", .{appState});
+        }
+
         // UI
-        try ui.render(&appState, allocator, &scenes);
+        try ui.render(&appState, allocator, &scenes_metadata);
 
         // TODO: need to take a look at these variables
         var width: c_int = 0;
@@ -210,8 +236,8 @@ pub fn main() !void {
         //uniforms setup
         // FIX: this is like really bodgy i need to change the scene state to the one on the whiteboards
         // makes a lot more sense and facilitates cases like this
-        const current_scene_idx = @as(usize, @intCast(appState.renderer.current_scene));
-        const current_scene = &scenes[current_scene_idx];
+        // const current_scene_idx = @as(usize, @intCast(appState.renderer.current_scene));
+        // const current_scene = &scenes_init_fns[current_scene_idx];
 
         gl.UseProgram(current_scene.shader_program);
         var mouse_x: f64 = undefined;
@@ -250,7 +276,9 @@ pub fn main() !void {
         //     want_to_save = true;
         // }
 
-        appState.renderer.should_reset_accumulation = utils.handleMovement(&appState);
+        if (utils.handleMovement(&appState)) {
+            appState.renderer.should_reset_accumulation = true;
+        }
 
         appState.scene.state.bound_texture_count = 0;
         for (current_scene.textures, current_scene.texture_names) |texture, name| {
@@ -276,6 +304,8 @@ pub fn main() !void {
             gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
             appState.renderer.total_accumulated_frames = 0;
             appState.mouse.moved = false;
+
+            appState.renderer.should_reset_accumulation = false;
         }
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
         //invert framebuffer
