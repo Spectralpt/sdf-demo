@@ -302,9 +302,11 @@ SDF map(vec3 p) {
   SDF sphere2;
   sphere2.distance = sdSphere(p - vec3(0.0, -0.3, 0.0), 0.1);
   sphere2.id = 7.0;
-  float sphere2_disp = texture(u_onyx_displacement, p.xz).r;
-  sphere2_disp *= 0.01;
-  sphere2.distance = sphere2.distance - sphere2_disp;
+  if (sphere2.distance < 0.05) {
+    float sphere2_disp = textureLod(u_onyx_displacement, p.xz, 0.0).r;
+    sphere2_disp *= 0.01;
+    sphere2.distance = sphere2.distance - sphere2_disp;
+  }
 
   SDF sphere3;
   sphere3.distance = sdSphere(p - vec3(-0.3, -0.3, 0.0), 0.1);
@@ -317,16 +319,20 @@ SDF map(vec3 p) {
   SDF ground;
   ground.distance = sdPlane(p, vec3(0.0, 1.0, 0.0), 0.4);
   ground.id = 9.0;
-  float ground_disp = texture(u_ground_disp, p.xz).r;
-  ground_disp *= 0.005;
-  ground.distance = ground.distance - ground_disp;
+  if (ground.distance < 0.05) {
+    float ground_disp = textureLod(u_ground_disp, p.xz, 0.0).r;
+    ground_disp *= 0.005;
+    ground.distance = ground.distance - ground_disp;
+  }
 
   SDF back;
   back.distance = sdPlane(p, vec3(0.0, 0.0, 1.0), 0.5);
   back.id = 11.0;
-  float back_disp = texture(u_tile_displacement, p.xy).r;
-  back_disp *= 0.01;
-  back.distance = back.distance - back_disp;
+  if (back.distance < 0.05) {
+    float back_disp = textureLod(u_tile_displacement, p.xy, 0.0).r;
+    back_disp *= 0.01;
+    back.distance = back.distance - back_disp;
+  }
 
   SDF left;
   left.distance = sdPlane(p, vec3(1.0, 0.0, 0.0), 0.5);
