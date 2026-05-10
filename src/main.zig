@@ -133,6 +133,8 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
+    try appState.scenes.switchScene(0);
+
     // const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene.Scene;
     // const scenes_init_fns = [_]SceneInitFn{
     //     scenes.sanity.init,
