@@ -35,12 +35,12 @@ fn cursorPosCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(std.
     app.mouse.last_pos[1] = ypos;
 
     const sensitivity: f32 = 0.005;
-    app.scene.state.yaw -= @as(f32, @floatCast(x_offset)) * sensitivity;
-    app.scene.state.pitch -= @as(f32, @floatCast(y_offset)) * sensitivity;
+    app.scenes.current_state.yaw -= @as(f32, @floatCast(x_offset)) * sensitivity;
+    app.scenes.current_state.pitch -= @as(f32, @floatCast(y_offset)) * sensitivity;
 
     // Constrain pitch (approx 85 degrees)
-    if (app.scene.state.pitch > 1.5) app.scene.state.pitch = 1.5;
-    if (app.scene.state.pitch < -1.5) app.scene.state.pitch = -1.5;
+    if (app.scenes.current_state.pitch > 1.5) app.scenes.current_state.pitch = 1.5;
+    if (app.scenes.current_state.pitch < -1.5) app.scenes.current_state.pitch = -1.5;
 
     // This flag tells your main loop to reset u_frame and clear the ping-pong buffers
     app.mouse.moved = true;
@@ -80,7 +80,18 @@ pub fn main() !void {
     }
     defer c.glfwTerminate();
 
-    var appState = state.app_state{};
+    const available_scenes = [_]Scene.SceneEntry{
+        .{ .metadata = try scenes.sanity.init_metadata(), .init_fn = scenes.sanity.init },
+        .{ .metadata = try scenes.scene1.init_metadata(), .init_fn = scenes.scene1.init },
+        .{ .metadata = try scenes.no_tex.init_metadata(), .init_fn = scenes.no_tex.init },
+    };
+
+    var appState = state.app_state{
+        .scenes = .{
+            .allocator = allocator,
+            .registry = &available_scenes,
+        },
+    };
     appState.window_title = "SDF Path Tracing";
 
     // CLI ARGS
@@ -122,20 +133,18 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
-    const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene.Scene;
-    const scenes_init_fns = [_]SceneInitFn{
-        scenes.sanity.init,
-        scenes.scene1.init,
-        scenes.no_tex.init,
-    };
-    // const SceneMetadataInitFn = *const fn () anyerror!Scene.Scene_metadata;
-    const scenes_metadata = [_]Scene.Scene_metadata{
-        try scenes.sanity.init_metadata(),
-        try scenes.scene1.init_metadata(),
-        try scenes.no_tex.init_metadata(),
-    };
-    var current_scene = try scenes_init_fns[@intCast(appState.renderer.current_scene)](allocator);
-    var active_scene_idx: c_int = appState.renderer.current_scene;
+    // const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene.Scene;
+    // const scenes_init_fns = [_]SceneInitFn{
+    //     scenes.sanity.init,
+    //     scenes.scene1.init,
+    //     scenes.no_tex.init,
+    // };
+    // // const SceneMetadataInitFn = *const fn () anyerror!Scene.Scene_metadata;
+    // const scenes_metadata = [_]Scene.Scene_metadata{
+    //     try scenes.sanity.init_metadata(),
+    //     try scenes.scene1.init_metadata(),
+    //     try scenes.no_tex.init_metadata(),
+    // };
 
     // main (tone mapping pass)
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
@@ -207,22 +216,17 @@ pub fn main() !void {
     while (c.glfwWindowShouldClose(appState.window) == 0) {
         c.glfwPollEvents();
 
-        if (appState.renderer.current_scene != active_scene_idx) {
-            if (current_scene.shader_program != 0) {
-                gl.DeleteProgram(current_scene.shader_program);
-            }
-            const new_active_idx = @as(usize, @intCast(appState.renderer.current_scene));
-            current_scene = try scenes_init_fns[new_active_idx](allocator);
-            active_scene_idx = appState.renderer.current_scene;
+        if (appState.renderer.current_scene != appState.scenes.active_index) {
+            try appState.scenes.switchScene(appState.scenes.active_index);
 
-            appState.scene.data = current_scene;
             appState.renderer.should_reset_accumulation = true;
             appState.renderer.total_accumulated_frames = 0;
-            std.debug.print("{any}", .{appState});
         }
 
+        const current_scene = appState.scenes.active_scene;
+
         // UI
-        try ui.render(&appState, allocator, &scenes_metadata);
+        try ui.render(&appState, allocator);
 
         // TODO: need to take a look at these variables
         var width: c_int = 0;
@@ -239,38 +243,38 @@ pub fn main() !void {
         // const current_scene_idx = @as(usize, @intCast(appState.renderer.current_scene));
         // const current_scene = &scenes_init_fns[current_scene_idx];
 
-        gl.UseProgram(current_scene.shader_program);
+        gl.UseProgram(current_scene.?.shader_program);
         var mouse_x: f64 = undefined;
         var mouse_y: f64 = undefined;
         c.glfwGetCursorPos(appState.window, @ptrCast(&mouse_x), @ptrCast(&mouse_y));
 
-        const uniform_window_size = gl.GetUniformLocation(current_scene.shader_program, "u_resolution");
+        const uniform_window_size = gl.GetUniformLocation(current_scene.?.shader_program, "u_resolution");
         // gl.Uniform2f(uniform_window_size, @floatFromInt(width), @floatFromInt(height));
         gl.Uniform2f(uniform_window_size, @floatFromInt(appState.renderer.render_w), @floatFromInt(appState.renderer.render_h));
 
-        const uniform_mouse_pos = gl.GetUniformLocation(current_scene.shader_program, "u_mouse");
+        const uniform_mouse_pos = gl.GetUniformLocation(current_scene.?.shader_program, "u_mouse");
         gl.Uniform2f(uniform_mouse_pos, @floatCast(mouse_x), @floatCast(mouse_y));
 
         const current_time: f64 = c.glfwGetTime();
-        const uniform_time = gl.GetUniformLocation(current_scene.shader_program, "u_time");
+        const uniform_time = gl.GetUniformLocation(current_scene.?.shader_program, "u_time");
         gl.Uniform1f(uniform_time, @floatCast(current_time));
 
-        const uniform_frame = gl.GetUniformLocation(current_scene.shader_program, "u_frame");
+        const uniform_frame = gl.GetUniformLocation(current_scene.?.shader_program, "u_frame");
         gl.Uniform1i(uniform_frame, @intCast(appState.renderer.total_accumulated_frames));
 
-        gl.Uniform1i(gl.GetUniformLocation(current_scene.shader_program, "u_spf"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(current_scene.?.shader_program, "u_spf"), 1);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
-        const uniform_temperatureRGB = gl.GetUniformLocation(current_scene.shader_program, "u_tempColor");
+        const uniform_temperatureRGB = gl.GetUniformLocation(current_scene.?.shader_program, "u_tempColor");
         gl.Uniform3f(uniform_temperatureRGB, temperatureRGB[0], temperatureRGB[1], temperatureRGB[2]);
 
         // yaw and pitch
-        const uniform_cam_rot = gl.GetUniformLocation(current_scene.shader_program, "u_cameraRot");
-        gl.Uniform2f(uniform_cam_rot, appState.scene.state.yaw, appState.scene.state.pitch);
+        const uniform_cam_rot = gl.GetUniformLocation(current_scene.?.shader_program, "u_cameraRot");
+        gl.Uniform2f(uniform_cam_rot, appState.scenes.current_state.yaw, appState.scenes.current_state.pitch);
 
         //camera position
-        const uniform_cam_pos = gl.GetUniformLocation(current_scene.shader_program, "u_cameraPos");
-        gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&appState.scene.state.cam_pos));
+        const uniform_cam_pos = gl.GetUniformLocation(current_scene.?.shader_program, "u_cameraPos");
+        gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&appState.scenes.current_state.cam_pos));
 
         // if (frame % 1000 == 0 and frame != 0) {
         //     want_to_save = true;
@@ -280,15 +284,15 @@ pub fn main() !void {
             appState.renderer.should_reset_accumulation = true;
         }
 
-        appState.scene.state.bound_texture_count = 0;
-        for (current_scene.textures, current_scene.texture_names) |texture, name| {
-            try utils.bindTexture(texture, name, current_scene.shader_program, &appState);
+        appState.scenes.current_state.bound_texture_count = 0;
+        for (current_scene.?.textures, current_scene.?.texture_names) |texture, name| {
+            try utils.bindTexture(texture, name, current_scene.?.shader_program, &appState);
         }
 
         //drawing fbo
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, pass1_textures[current]);
-        gl.Uniform1i(gl.GetUniformLocation(current_scene.shader_program, "u_pass1"), 0);
+        gl.Uniform1i(gl.GetUniformLocation(current_scene.?.shader_program, "u_pass1"), 0);
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
         gl.BindFramebuffer(gl.FRAMEBUFFER, fbos[1 - current]);
         const imgui_io = c.ImGui_GetIO();

@@ -1,8 +1,9 @@
 const c = @import("c.zig").c;
-const Scene = @import("scene.zig").Scene;
+const Scene = @import("scene.zig");
+const std = @import("std");
 
 pub const mouse_state = struct {
-    first_mouse: bool = false,
+    first_mouse: bool = true,
     is_captured: bool = false,
     imgui_wants_mouse: bool = false,
     moved: bool = false,
@@ -24,6 +25,24 @@ pub const scene_state = struct {
     bound_texture_count: u32 = 0,
 };
 
+pub const SceneManager = struct {
+    allocator: std.mem.Allocator,
+    registry: []const Scene.SceneEntry,
+    active_scene: ?Scene.Scene = null,
+    active_index: usize = 0,
+    current_state: scene_state = .{},
+
+    pub fn switchScene(self: *SceneManager, new_scene_index: usize) !void {
+        if (self.active_scene) |*scene| {
+            try scene.deinit(self.allocator);
+        }
+
+        self.active_scene = try self.registry[new_scene_index].init_fn(self.allocator);
+        self.active_index = new_scene_index;
+        self.current_state = .{};
+    }
+};
+
 pub const metrics_state = struct {
     ms_per_frame: f64 = 0,
     last_time: f64 = 0,
@@ -41,18 +60,11 @@ pub const renderer_state = struct {
 pub const app_state = struct {
     mouse: mouse_state = .{},
     imgui: imgui_state = .{},
-    scene: struct {
-        data: ?Scene = null,
-        state: scene_state = .{},
-    } = .{},
+    scenes: SceneManager,
     metrics: metrics_state = .{},
     renderer: renderer_state = .{},
     window_w: c_int = 0,
     window_h: c_int = 0,
     window_title: []const u8 = "",
     window: ?*c.struct_GLFWwindow = @ptrFromInt(0),
-
-    pub fn setScene(self: *app_state, scene: Scene) void {
-        self.renderer.current_scene = scene.id;
-    }
 };

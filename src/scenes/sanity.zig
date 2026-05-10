@@ -5,8 +5,8 @@ const utils = @import("../utils.zig");
 const shaders = @import("../shaders.zig");
 const std = @import("std");
 
-pub fn init_metadata() !scene.Scene_metadata {
-    return scene.Scene_metadata{ .name = "sanity" };
+pub fn init_metadata() !scene.SceneMetadata {
+    return scene.SceneMetadata{ .name = "sanity" };
 }
 
 pub fn init(allocator: std.mem.Allocator) !scene.Scene {

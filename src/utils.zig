@@ -125,13 +125,13 @@ pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int,
 
 // FIX: maybe look at how i should i actually do the shader program part, the scenes array would probably fix this
 pub fn bindTexture(texture_id: u32, uniform_name: [:0]const u8, shader_program: u32, appState: *state.app_state) !void {
-    const current_max_texture = appState.scene.state.bound_texture_count;
+    const current_max_texture = appState.scenes.current_state.bound_texture_count;
 
     //gl.TEXTURE0 is reserved for the path tracing pass
     gl.ActiveTexture(@as(u32, gl.TEXTURE1) + current_max_texture);
     gl.BindTexture(gl.TEXTURE_2D, texture_id);
     gl.Uniform1i(gl.GetUniformLocation(shader_program, uniform_name.ptr), @intCast(current_max_texture + 1));
-    appState.scene.state.bound_texture_count += 1;
+    appState.scenes.current_state.bound_texture_count += 1;
 }
 
 pub fn fullscreenQuad() !u32 {
@@ -178,33 +178,33 @@ pub fn handleMovement(appState: *state.app_state) bool {
 
     // Forward (W) / Backward (S)
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_W) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[0] -= @sin(appState.scene.state.yaw) * speed;
-        appState.scene.state.cam_pos[2] -= @cos(appState.scene.state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[0] -= @sin(appState.scenes.current_state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[2] -= @cos(appState.scenes.current_state.yaw) * speed;
         moved_this_frame = true;
     }
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_S) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[0] += @sin(appState.scene.state.yaw) * speed;
-        appState.scene.state.cam_pos[2] += @cos(appState.scene.state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[0] += @sin(appState.scenes.current_state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[2] += @cos(appState.scenes.current_state.yaw) * speed;
         moved_this_frame = true;
     }
     // Left (A) / Right (D)
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_A) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[0] -= @cos(appState.scene.state.yaw) * speed;
-        appState.scene.state.cam_pos[2] += @sin(appState.scene.state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[0] -= @cos(appState.scenes.current_state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[2] += @sin(appState.scenes.current_state.yaw) * speed;
         moved_this_frame = true;
     }
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_D) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[0] += @cos(appState.scene.state.yaw) * speed;
-        appState.scene.state.cam_pos[2] -= @sin(appState.scene.state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[0] += @cos(appState.scenes.current_state.yaw) * speed;
+        appState.scenes.current_state.cam_pos[2] -= @sin(appState.scenes.current_state.yaw) * speed;
         moved_this_frame = true;
     }
     // Up (Space) / Down (Left Shift)
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_SPACE) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[1] += speed;
+        appState.scenes.current_state.cam_pos[1] += speed;
         moved_this_frame = true;
     }
     if (c.glfwGetKey(appState.window, c.GLFW_KEY_LEFT_SHIFT) == c.GLFW_PRESS) {
-        appState.scene.state.cam_pos[1] -= speed;
+        appState.scenes.current_state.cam_pos[1] -= speed;
         moved_this_frame = true;
     }
 

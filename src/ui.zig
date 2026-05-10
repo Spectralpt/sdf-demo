@@ -6,7 +6,7 @@ const scene = @import("scene.zig");
 
 // TODO: maybe put frag path in appstate idk man ill figure it out
 // light temperature is also fucked gg, will fix later:tm:
-pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, scenes: []const scene.Scene_metadata) !void {
+pub fn render(appState: *state.app_state, allocator: std.mem.Allocator) !void {
     // const imgui_io = c.ImGui_GetIO();
     c.cImGui_ImplOpenGL3_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();
@@ -28,10 +28,11 @@ pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, scenes: 
         };
     }
     const current_idx = @as(usize, @intCast(appState.renderer.current_scene));
-    const preview_name = scenes[current_idx].name.ptr;
+    const scene_names = appState.scenes.registry;
+    const preview_name = appState.scenes.registry[current_idx].metadata.name.ptr;
     if (c.ImGui_BeginCombo(" ", preview_name, 0)) {
-        for (scenes, 0..) |s, i| {
-            if (c.ImGui_Selectable(s.name.ptr)) {
+        for (scene_names, 0..) |name, i| {
+            if (c.ImGui_Selectable(name.metadata.name)) {
                 appState.renderer.current_scene = @intCast(i);
                 appState.renderer.total_accumulated_frames = 0;
             }
@@ -45,11 +46,11 @@ pub fn render(appState: *state.app_state, allocator: std.mem.Allocator, scenes: 
     c.ImGui_Text("Frame time: %.2f ms", appState.metrics.ms_per_frame);
 
     c.ImGui_SeparatorText("Position");
-    c.ImGui_Text("x: %.2f", appState.scene.state.cam_pos[0]);
-    c.ImGui_Text("y: %.2f", appState.scene.state.cam_pos[1]);
-    c.ImGui_Text("z: %.2f", appState.scene.state.cam_pos[2]);
-    c.ImGui_Text("yaw: %.2f", appState.scene.state.yaw);
-    c.ImGui_Text("pitch: %.2f", appState.scene.state.pitch);
+    c.ImGui_Text("x: %.2f", appState.scenes.current_state.cam_pos[0]);
+    c.ImGui_Text("y: %.2f", appState.scenes.current_state.cam_pos[1]);
+    c.ImGui_Text("z: %.2f", appState.scenes.current_state.cam_pos[2]);
+    c.ImGui_Text("yaw: %.2f", appState.scenes.current_state.yaw);
+    c.ImGui_Text("pitch: %.2f", appState.scenes.current_state.pitch);
 
     c.ImGui_Spacing();
     c.ImGui_Spacing();

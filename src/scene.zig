@@ -5,23 +5,25 @@ const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
 
+pub const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene;
+
+pub const SceneMetadata = struct {
+    name: [:0]const u8 = "",
+};
+
 pub const Scene = struct {
     textures: []u32,
     texture_names: []const [:0]const u8,
     shader_program: u32 = 0,
-    // vertex_shader: u32 = 0,
-    // fragment_shader: u32 = 0,
+
+    pub fn deinit(self: *Scene, allocator: std.mem.Allocator) !void {
+        gl.DeleteTextures(@intCast(self.textures.len), self.textures.ptr);
+        allocator.free(self.textures);
+        gl.DeleteProgram(self.shader_program);
+    }
 };
 
-pub const Scene_metadata = struct {
-    id: u32 = 0,
-    name: [:0]const u8 = "",
+pub const SceneEntry = struct {
+    metadata: SceneMetadata,
+    init_fn: SceneInitFn,
 };
-
-// TODO: Maybe i take a look at doing a struct that houses the init setup for Scene_setup
-// not really sure if this would be THAT usefull
-// NOTE: maybe i can even do some init function that could take this struct
-
-// pub const Scene_setup = struct {
-//
-// };
