@@ -27,13 +27,13 @@ pub fn render(appState: *state.app_state, allocator: std.mem.Allocator) !void {
             std.log.err("Failed to save screenshot: {}", .{err});
         };
     }
-    const current_idx = @as(usize, @intCast(appState.renderer.current_scene));
+    const current_idx = @as(usize, @intCast(appState.scenes.requested_scene_index));
     const scene_names = appState.scenes.registry;
     const preview_name = appState.scenes.registry[current_idx].metadata.name.ptr;
     if (c.ImGui_BeginCombo(" ", preview_name, 0)) {
         for (scene_names, 0..) |name, i| {
             if (c.ImGui_Selectable(name.metadata.name)) {
-                appState.renderer.current_scene = @intCast(i);
+                appState.scenes.requested_scene_index = @intCast(i);
                 appState.renderer.total_accumulated_frames = 0;
             }
         }

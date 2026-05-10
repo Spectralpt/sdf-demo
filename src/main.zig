@@ -204,12 +204,12 @@ pub fn main() !void {
     var rendered_frame: u32 = 1;
 
     appState.imgui.is_active = false;
-    appState.renderer.current_scene = 0;
+    appState.scenes.requested_scene_index = 0;
     appState.imgui.window_size = .{ .x = 0, .y = 0 };
     appState.renderer.total_accumulated_frames = 0;
     appState.metrics.ms_per_frame = 0;
     appState.renderer.want_to_save = false;
-    appState.renderer.current_scene = 0;
+    appState.scenes.requested_scene_index = 0;
 
     //scene state
     var light_temperature: i32 = 5000;
@@ -218,7 +218,7 @@ pub fn main() !void {
     while (c.glfwWindowShouldClose(appState.window) == 0) {
         c.glfwPollEvents();
 
-        if (appState.renderer.current_scene != appState.scenes.active_index) {
+        if (appState.scenes.requested_scene_index != appState.scenes.active_index) {
             try appState.scenes.switchScene(appState.scenes.active_index);
 
             appState.renderer.should_reset_accumulation = true;
@@ -242,7 +242,7 @@ pub fn main() !void {
         //uniforms setup
         // FIX: this is like really bodgy i need to change the scene state to the one on the whiteboards
         // makes a lot more sense and facilitates cases like this
-        // const current_scene_idx = @as(usize, @intCast(appState.renderer.current_scene));
+        // const current_scene_idx = @as(usize, @intCast(appState.scenes.requested_scene_index));
         // const current_scene = &scenes_init_fns[current_scene_idx];
 
         gl.UseProgram(current_scene.?.shader_program);

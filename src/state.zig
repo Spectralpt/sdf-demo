@@ -30,15 +30,19 @@ pub const SceneManager = struct {
     registry: []const Scene.SceneEntry,
     active_scene: ?Scene.Scene = null,
     active_index: usize = 0,
+    requested_scene_index: c_int = 0,
     current_state: scene_state = .{},
 
-    pub fn switchScene(self: *SceneManager, new_scene_index: usize) !void {
+    pub fn switchScene(self: *SceneManager, requested_index: usize) !void {
         if (self.active_scene) |*scene| {
             try scene.deinit(self.allocator);
         }
 
-        self.active_scene = try self.registry[new_scene_index].init_fn(self.allocator);
-        self.active_index = new_scene_index;
+        self.active_scene = try self.registry[requested_index].init_fn(self.allocator);
+        self.active_index = requested_index;
+
+        self.requested_scene_index = @intCast(requested_index);
+
         self.current_state = .{};
     }
 };
@@ -51,7 +55,6 @@ pub const metrics_state = struct {
 pub const renderer_state = struct {
     total_accumulated_frames: u32 = 0,
     should_reset_accumulation: bool = false,
-    current_scene: c_int = 0,
     want_to_save: bool = false,
     render_w: c_int = 0,
     render_h: c_int = 0,
