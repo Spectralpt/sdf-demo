@@ -219,7 +219,7 @@ pub fn main() !void {
         c.glfwPollEvents();
 
         if (appState.scenes.requested_scene_index != appState.scenes.active_index) {
-            try appState.scenes.switchScene(appState.scenes.active_index);
+            try appState.scenes.switchScene(@intCast(appState.scenes.requested_scene_index));
 
             appState.renderer.should_reset_accumulation = true;
             appState.renderer.total_accumulated_frames = 0;
