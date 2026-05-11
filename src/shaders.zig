@@ -1,11 +1,18 @@
 const std = @import("std");
 const gl = @import("gl");
 const glfw = @import("glfw.zig");
+const ShaderError = @import("errors.zig").ShaderError;
 
 pub fn readFileToString(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     const cwd = std.fs.cwd();
 
-    const file = try cwd.openFile(path, .{});
+    const file = cwd.openFile(path, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.debug.print("File not found: {s}\n", .{path});
+            return err;
+        },
+        else => |e| return e,
+    };
     defer file.close();
 
     const max_size = 1024 * 1024;
@@ -34,7 +41,7 @@ pub fn compileShader(allocator: std.mem.Allocator, shader_source: []const u8, sh
     gl.GetShaderInfoLog(shader, log_size, null, log_buffer.ptr);
 
     try std.fs.File.stderr().writeAll(log_buffer);
-    return error.shader_compilation_fail;
+    return ShaderError.shader_compilation_fail;
 }
 
 pub fn setupShaderProgram(allocator: std.mem.Allocator, shaders: []const u32) !u32 {
@@ -60,7 +67,7 @@ pub fn setupShaderProgram(allocator: std.mem.Allocator, shaders: []const u32) !u
     gl.GetProgramInfoLog(shaderProgram, log_size, null, log_buffer.ptr);
 
     try std.fs.File.stderr().writeAll(log_buffer);
-    return error.shader_program_link_fail;
+    return ShaderError.shader_program_link_fail;
 }
 
 test "compileBasicShaderPass" {

@@ -4,12 +4,28 @@ layout(location = 0) out vec4 fragColor;
 
 uniform vec2 u_resolution;
 uniform vec2 u_mouse;
+uniform sampler2D u_greenMarble;
+uniform sampler2D u_bumpmap;
+uniform sampler2D u_whiteMarble;
+uniform sampler2D u_roof;
+uniform sampler2D u_roofbump;
 
 const float FOV = 1.0;
 const int MAX_STEPS = 256;
 const float MAX_DIST = 500;
 const float EPSILON = 0.001;
 
+float cubeSize = 6.0;
+
+float cubeScale = 1.0 / cubeSize;
+float sphereScale = 0.2;
+float roofScale = 0.15;
+float pedestalScale = 0.3;
+float wallScale = 0.12;
+
+float roofBumpFactor = 0.31;
+float sphereBumpFactor = 0.21;
+float wallBumpFactor = 0.06;
 ////////////////////////////////////////////////////////////////
 //
 //                           HG_SDF
@@ -822,21 +838,135 @@ float fOpTongue(float a, float b, float ra, float rb) {
   return min(a, max(a - ra, abs(b) - rb));
 }
 
+//MY THINGS
+
+vec3 triPlanar(sampler2D tex, vec3 p, vec3 normal) {
+  normal = abs(normal);
+  normal = pow(normal, vec3(5.0));
+  normal /= normal.x + normal.y + normal.z;
+  return (texture(tex, p.xy * 0.5 + 0.5) * normal.z +
+    texture(tex, p.xz * 0.5 + 0.5) * normal.y +
+    texture(tex, p.yz * 0.5 + 0.5) * normal.x).rgb;
+}
+
+float bumpMapping(sampler2D tex, vec3 p, vec3 n, float dist, float factor, float scale) {
+  float bump = 0.0;
+  if (dist < 0.1)
+  {
+    vec3 normal = normalize(n);
+    bump += factor * triPlanar(tex, (p * scale), normal).r;
+  }
+  return bump;
+}
+
+vec2 fpOpDifferenceID(vec2 res1, vec2 res2) {
+  return (res1.x > -res2.x) ? res1 : vec2(-res2.x, res2.y);
+}
+
 vec2 fOpUnionID(vec2 res1, vec2 res2) {
   return (res1.x < res2.x) ? res1 : res2;
 }
+vec2 fOpDifferenceColumnsID(vec2 res1, vec2 res2, float r, float n) {
+  float dist = fOpDifferenceColumns(res1.x, res2.x, r, n);
+  return (res1.x > -res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
+vec2 fOpUnionStairsID(vec2 res1, vec2 res2, float r, float n) {
+  float dist = fOpUnionStairs(res1.x, res2.x, r, n);
+  return (res1.x < res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
+vec2 fOpUnionChamferID(vec2 res1, vec2 res2, float r) {
+  float dist = fOpUnionChamfer(res1.x, res2.x, r);
+  return (res1.x < res2.x) ? vec2(dist, res1.y) : vec2(dist, res2.y);
+}
+
+void translateSphere(inout vec3 p) {
+  p.y -= 4.4;
+}
+
+vec2 getPedestal(vec3 p) {
+  float ID = 9.0;
+  float resDist;
+  // box 1
+  p.y += 13.8;
+  float box1 = fBoxCheap(p, vec3(8, 0.4, 8));
+  // box 2
+  p.y -= 6.4;
+  float box2 = fBoxCheap(p, vec3(7, 6, 7));
+  // box 3
+  pMirrorOctant(p.zx, vec2(7.5, 7.5));
+  float box3 = fBoxCheap(p, vec3(5, 4, 1));
+  // res
+  resDist = box1;
+  resDist = min(resDist, box2);
+  resDist = fOpDifferenceColumns(resDist, box3, 1.9, 10.0);
+  return vec2(resDist, ID);
+}
 
 vec2 map(vec3 p) {
-  float planeDist = fPlane(p, vec3(0, 1, 0), 1.0);
+  vec3 tmp, op = p;
+
+  float planeDist = fPlane(p, vec3(0, 1, 0), 14.0);
   float planeID = 2.0;
   vec2 plane = vec2(planeDist, planeID);
 
-  float sphereDist = fSphere(p, 1.0);
-  float sphereID = 1.0;
+  vec3 ps = p;
+  translateSphere(ps);
+  float sphereDist = fSphere(ps, 6.0);
+  sphereDist += bumpMapping(u_bumpmap, ps, ps + sphereBumpFactor, sphereDist, sphereBumpFactor, sphereScale);
+  sphereDist += sphereBumpFactor;
+  float sphereID = 6.0;
   vec2 sphere = vec2(sphereDist, sphereID);
 
+  //cube
+  // vec3 pb = p;
+  // float cubeDist = fBoxCheap(pb, vec3(cubeSize));
+  // float cubeID = 5.0;
+  // vec2 cube = vec2(cubeDist, cubeID);
+  vec2 pedestal = getPedestal(p);
+
+  //manipulation operators
+  pMirrorOctant(p.xz, vec2(50, 50));
+  p.x = -abs(p.x) + 20;
+  pMod1(p.z, 15);
+
+  //roof
+  vec3 pr = p;
+  pr.y -= 15.5;
+  pR(pr.xy, 0.6);
+  pr.x -= 18.0;
+  float roofDist = fBox2(pr.xy, vec2(20, 0.3));
+  roofDist -= bumpMapping(u_roofbump, p, p - roofBumpFactor, roofDist, roofBumpFactor, roofScale);
+  roofDist += roofBumpFactor;
+  float roofID = 7.0;
+  vec2 roof = vec2(roofDist, roofID);
+
+  float boxDist = fBox(p, vec3(3, 9, 4));
+  float boxID = 3.0;
+  vec2 box = vec2(boxDist, boxID);
+
+  vec3 pc = p;
+  pc.y -= 9.0;
+  float cylinderDist = fCylinder(pc.yxz, 4, 3);
+  float cylinderID = 3.0;
+  vec2 cylinder = vec2(cylinderDist, cylinderID);
+
+  //wall
+  float wallDist = fBox2(p.xy, vec2(1, 15));
+  float wallID = 3.0;
+  vec2 wall = vec2(wallDist, wallID);
+
   //result
-  vec2 res = fOpUnionID(sphere, plane);
+  vec2 res;
+  // res = plane;
+  res = fOpUnionID(box, cylinder);
+  res = fOpDifferenceColumnsID(wall, res, 0.6, 3.0);
+  res = fOpUnionChamferID(res, roof, 0.6);
+  res = fOpUnionStairsID(res, plane, 4.0, 5.0);
+  // res = fOpUnionID(res, cube);
+  res = fOpUnionID(res, pedestal);
+  res = fOpUnionID(res, sphere);
   return res;
 }
 
@@ -858,25 +988,7 @@ vec3 getNormal(vec3 p) {
   return normalize(n);
 }
 
-vec3 getLight(vec3 p, vec3 rd, vec3 color) {
-  vec3 lightPos = vec3(20.0, 40.0, -30.0);
-  vec3 L = normalize(lightPos - p);
-  vec3 N = getNormal(p);
-  vec3 V = -rd;
-  vec3 R = reflect(-L, N);
-
-  vec3 specColor = vec3(0.5);
-  vec3 specular = specColor * pow(clamp(dot(R, V), 0.0, 1.0), 10.0);
-  vec3 diffuse = color * clamp(dot(L, N), 0.0, 1.0);
-  vec3 ambient = color * 0.05;
-
-  //shadows
-  float d = rayMarch(p + N * 0.02, normalize(lightPos)).x;
-  if (d < length(lightPos - p)) return ambient;
-  return diffuse + ambient + specular;
-}
-
-vec3 getMaterial(vec3 p, float id) {
+vec3 getMaterial(vec3 p, float id, vec3 normal) {
   vec3 m;
   switch (int(id)) {
     case 1:
@@ -885,8 +997,78 @@ vec3 getMaterial(vec3 p, float id) {
     case 2:
     m = vec3(0.2 + 0.4 * mod(floor(p.x) + floor(p.z), 2.0));
     break;
+    case 3:
+    m = vec3(0.7, 0.8, 0.9);
+    break;
+
+    case 5:
+    m = triPlanar(u_greenMarble, p * cubeScale, normal);
+    break;
+
+    case 7:
+    m = triPlanar(u_roof, p * roofScale, normal);
+    break;
+
+    case 9:
+    m = triPlanar(u_whiteMarble, p * pedestalScale, normal);
+    break;
+
+    case 6:
+    m = triPlanar(u_greenMarble, p * sphereScale, normal);
+    break;
+
+    default:
+    m = vec3(0.4);
+    break;
   }
   return m;
+}
+
+float getSoftShadow(vec3 p, vec3 lightPos) {
+  float res = 1.0;
+  float dist = 0.01;
+  float lightSize = 0.03;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    float hit = map(p + lightPos * dist).x;
+    res = min(res, hit / (dist * lightSize));
+    dist += hit;
+    if (hit < 0.0001 || dist > 60.0) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+float getAmbientOcclusion(vec3 p, vec3 normal) {
+  float occ = 0.0;
+  float weight = 1.0;
+  for (int i = 0; i < 8; i++) {
+    float len = 0.01 + 0.02 * float(i * i);
+    float dist = map(p + normal * len).x;
+    occ += (len - dist) * weight;
+    weight *= 0.85;
+  }
+  return 1.0 - clamp(0.6 * occ, 0.0, 1.0);
+}
+
+vec3 getLight(vec3 p, vec3 rd, float id) {
+  vec3 lightPos = vec3(20.0, 40.0, -30.0);
+  vec3 L = normalize(lightPos - p);
+  vec3 N = getNormal(p);
+  vec3 V = -rd;
+  vec3 R = reflect(-L, N);
+
+  vec3 color = getMaterial(p, id, N);
+
+  vec3 specColor = vec3(0.5);
+  vec3 specular = specColor * pow(clamp(dot(R, V), 0.0, 1.0), 10.0);
+  vec3 diffuse = color * clamp(dot(L, N), 0.0, 1.0);
+  vec3 ambient = color * 0.05;
+  vec3 fresnel = 0.25 * color * pow(1.0 + dot(rd, N), 3.0);
+
+  //shadows
+  float shadow = getSoftShadow(p + N * 0.02, normalize(lightPos));
+  float occ = getAmbientOcclusion(p, N);
+  vec3 back = 0.05 * color * clamp(dot(N, -L), 0.0, 1.0);
+  return (ambient + fresnel) * occ + (specular * occ + diffuse) * shadow;
 }
 
 mat3 getCam(vec3 ro, vec3 lookAt) {
@@ -895,38 +1077,48 @@ mat3 getCam(vec3 ro, vec3 lookAt) {
   vec3 camU = cross(camF, camR);
   return mat3(camR, camU, camF);
 }
-
 void mouseControl(inout vec3 ro) {
   vec2 m = u_mouse / u_resolution;
-  pR(ro.yz, m.y * PI * 0.5 - 0.5);
+  pR(ro.yz, m.y * PI * 0.4 - 0.4);
   pR(ro.xz, m.x * TAU);
 }
 
-void render(inout vec3 col, in vec2 uv) {
-  vec3 ro = vec3(3.0, 3.0, -3.0);
+vec3 render(vec2 uv) {
+  vec3 col = vec3(0);
+  vec3 background = vec3(0.5, 0.8, 0.9);
+
+  vec3 ro = vec3(-36.0, 19, -36.0);
   mouseControl(ro);
-  vec3 lookAt = vec3(0, 0, 0);
+
+  vec3 lookAt = vec3(0, 1, 0);
   vec3 rd = getCam(ro, lookAt) * normalize(vec3(uv, FOV));
 
   vec2 object = rayMarch(ro, rd);
 
-  vec3 background = vec3(0.5, 0.8, 0.9);
   if (object.x < MAX_DIST) {
     vec3 p = ro + object.x * rd;
-    vec3 material = getMaterial(p, object.y);
-    col += getLight(p, rd, material);
+    col += getLight(p, rd, object.y);
 
-    col = mix(col, background, 1.0 - exp(-0.0008 * object.x * object.x));
+    //fog
+    col = mix(col, background, 1.0 - exp(-0.00002 * object.x * object.x));
   } else {
-    col += background - max(0.95 * rd.y, 0.0);
+    col += background - max(0.9 * rd.y, 0.0);
   }
+  return col;
+}
+
+vec2 getUV(vec2 offset) {
+  return (2.0 * (gl_FragCoord.xy + offset) - u_resolution.xy) / u_resolution.y;
+}
+
+vec3 renderAAx4() {
+  vec4 e = vec4(0.125, -0.125, 0.375, -0.375);
+  vec3 colAA = render(getUV(e.xz)) + render(getUV(e.yw)) + render(getUV(e.wx)) + render(getUV(e.zy));
+  return colAA /= 4.0;
 }
 
 void main() {
-  vec2 uv = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
-
-  vec3 col;
-  render(col, uv);
+  vec3 col = renderAAx4();
 
   col = pow(col, vec3(0.4545));
   fragColor = vec4(col, 1.0);

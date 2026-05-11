@@ -1,37 +1,32 @@
 const shaders = @import("shaders.zig");
 const gl = @import("gl");
 const std = @import("std");
+const state = @import("state.zig");
 const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
 
-pub const AppState = struct {
-    width: c_int,
-    height: c_int,
-    mouse_x: f64,
-    mouse_y: f64,
+pub const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene;
+pub const CamInitFn = *const fn () state.scene_state;
+
+pub const SceneMetadata = struct {
+    name: [:0]const u8 = "",
 };
 
 pub const Scene = struct {
-    name: [*c]const u8,
-    frag_path: []const u8,
-    program: u32,
-    setUniforms: ?*const fn (program: u32) void = null,
+    textures: []u32,
+    texture_names: []const [:0]const u8,
+    shader_program: u32 = 0,
+
+    pub fn deinit(self: *Scene, allocator: std.mem.Allocator) !void {
+        gl.DeleteTextures(@intCast(self.textures.len), self.textures.ptr);
+        allocator.free(self.textures);
+        gl.DeleteProgram(self.shader_program);
+    }
 };
 
-pub fn setupSphereScene(program: u32, state: *AppState) void {
-    const uniform_window_size = gl.GetUniformLocation(program, "u_resolution");
-    gl.Uniform2f(uniform_window_size, @floatFromInt(state.width), @floatFromInt(state.height));
-
-    const uniform_mouse_pos = gl.GetUniformLocation(program, "u_mouse");
-    gl.Uniform2f(uniform_mouse_pos, @floatCast(state.mouse_x), @floatCast(state.mouse_y));
-}
-
-pub fn initScenes(scenes: []Scene, allocator: std.mem.Allocator, vert: u32) !void {
-    for (scenes) |*scene| {
-        const frag_src = try shaders.readFileToString(allocator, scene.frag_path);
-        defer allocator.free(frag_src);
-        const frag = try shaders.compileShader(allocator, frag_src, gl.FRAGMENT_SHADER);
-        scene.program = try shaders.setupShaderProgram(allocator, &[_]u32{ vert, frag });
-    }
-}
+pub const SceneEntry = struct {
+    metadata: SceneMetadata,
+    init_fn: SceneInitFn,
+    init_cam_fn: CamInitFn,
+};

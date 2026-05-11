@@ -1,0 +1,97 @@
+#version 410
+
+uniform vec2 u_resolution; // viewport size in pixels (width, height)
+uniform int u_frame; // frame increment counter
+
+uniform sampler2D u_pass1;
+
+uniform sampler2D u_main;
+uniform int u_spf; //16, [1, 64]
+
+// uniform sampler2D u_ground_disp;
+
+out vec4 fragColor;
+
+// a pixel value multiplier of light before tone mapping and sRGB
+const float c_exposure = 0.5f;
+const float KEY_SPACE = 32.5 / 256.0;
+const float c_rayPosNormalNudge = 0.01f;
+
+vec3 LessThan(vec3 f, float value)
+{
+    return vec3(
+        (f.x < value) ? 1.0f : 0.0f,
+        (f.y < value) ? 1.0f : 0.0f,
+        (f.z < value) ? 1.0f : 0.0f);
+}
+
+vec3 LinearToSRGB(vec3 rgb)
+{
+    rgb = clamp(rgb, 0.0f, 1.0f);
+
+    return mix(
+        pow(rgb, vec3(1.0f / 2.4f)) * 1.055f - 0.055f,
+        rgb * 12.92f,
+        LessThan(rgb, 0.0031308f)
+    );
+}
+
+vec3 SRGBToLinear(vec3 rgb)
+{
+    rgb = clamp(rgb, 0.0f, 1.0f);
+
+    return mix(
+        pow(((rgb + 0.055f) / 1.055f), vec3(2.4f)),
+        rgb / 12.92f,
+        LessThan(rgb, 0.04045f)
+    );
+}
+
+// ACES tone mapping curve fit to go from HDR to LDR
+//https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+vec3 ACESFilm(vec3 x)
+{
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
+}
+
+float FresnelReflectAmount(float n1, float n2, vec3 normal, vec3 incident, float f0, float f90)
+{
+    // Schlick aproximation
+    float r0 = (n1 - n2) / (n1 + n2);
+    r0 *= r0;
+    float cosX = -dot(normal, incident);
+    if (n1 > n2)
+    {
+        float n = n1 / n2;
+        float sinT2 = n * n * (1.0 - cosX * cosX);
+        // Total internal reflection
+        if (sinT2 > 1.0)
+            return f90;
+        cosX = sqrt(1.0 - sinT2);
+    }
+    float x = 1.0 - cosX;
+    float ret = r0 + (1.0 - r0) * x * x * x * x * x;
+
+    // adjust reflect multiplier for object reflectivity
+    return mix(f0, f90, ret);
+}
+
+void main() {
+    vec2 fragCoord = gl_FragCoord.xy;
+
+    vec3 color = texture(u_pass1, fragCoord / u_resolution.xy).rgb;
+    // apply exposure (how long the shutter is open)
+    color *= c_exposure;
+    // tone mapping
+    color = ACESFilm(color);
+    color = LinearToSRGB(color);
+    fragColor = vec4(color, 1.0f);
+
+    // vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+    // fragColor = texture(u_ground_disp, uv);
+}
