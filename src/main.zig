@@ -49,10 +49,17 @@ fn cursorPosCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(std.
 
 fn mouseButtonCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods: c_int) callconv(std.builtin.CallingConvention.c) void {
     _ = mods;
-    if (button == c.GLFW_MOUSE_BUTTON_LEFT) {
-        const user_ptr = c.glfwGetWindowUserPointer(window);
-        const app = @as(*state.app_state, @ptrCast(@alignCast(user_ptr)));
+    const user_ptr = c.glfwGetWindowUserPointer(window);
+    const app = @as(*state.app_state, @ptrCast(@alignCast(user_ptr)));
 
+    const imgui_io = c.ImGui_GetIO();
+    app.mouse.imgui_wants_mouse = imgui_io.*.WantCaptureMouse;
+
+    if (app.mouse.imgui_wants_mouse and action == c.GLFW_PRESS) {
+        return;
+    }
+
+    if (button == c.GLFW_MOUSE_BUTTON_LEFT) {
         if (action == c.GLFW_PRESS) {
             app.mouse.is_captured = true;
             app.mouse.lmb_pressed = true;
@@ -211,7 +218,8 @@ pub fn main() !void {
     appState.scenes.requested_scene_index = 0;
 
     //scene state
-    var light_temperature: i32 = 5000;
+    // FIX: want to move this inside the scene, so each scene can define their own kind of these things
+    const light_temperature: i32 = 5000;
 
     appState.metrics.last_time = c.glfwGetTime();
     while (c.glfwWindowShouldClose(appState.window) == 0) {
@@ -236,8 +244,6 @@ pub fn main() !void {
         gl.Viewport(0, 0, appState.renderer.render_w, appState.renderer.render_h);
         gl.Clear(gl.COLOR_BUFFER_BIT);
 
-        // our rendering
-
         //uniforms setup
 
         gl.UseProgram(current_scene.?.shader_program);
@@ -259,7 +265,7 @@ pub fn main() !void {
         const uniform_frame = gl.GetUniformLocation(current_scene.?.shader_program, "u_frame");
         gl.Uniform1i(uniform_frame, @intCast(appState.renderer.total_accumulated_frames));
 
-        gl.Uniform1i(gl.GetUniformLocation(current_scene.?.shader_program, "u_spf"), 1);
+        gl.Uniform1i(gl.GetUniformLocation(current_scene.?.shader_program, "u_spf"), appState.renderer.samples_per_frame);
 
         const temperatureRGB = utils.kelvinToColor(light_temperature);
         const uniform_temperatureRGB = gl.GetUniformLocation(current_scene.?.shader_program, "u_tempColor");
@@ -272,10 +278,6 @@ pub fn main() !void {
         //camera position
         const uniform_cam_pos = gl.GetUniformLocation(current_scene.?.shader_program, "u_cameraPos");
         gl.Uniform3fv(uniform_cam_pos, 1, @ptrCast(&appState.scenes.current_state.cam_pos));
-
-        // if (frame % 1000 == 0 and frame != 0) {
-        //     want_to_save = true;
-        // }
 
         if (utils.handleMovement(&appState)) {
             appState.renderer.should_reset_accumulation = true;
@@ -333,13 +335,7 @@ pub fn main() !void {
             };
             rendered_frame += 1;
             appState.renderer.want_to_save = false;
-
-            //temp
-            appState.mouse.moved = true;
-            light_temperature -= 100;
         }
-
-        //--------
 
         while (gl.GetError() != gl.NO_ERROR) {
             std.debug.print("OpenGL Error:{any}\n", .{gl.GetError()});
@@ -355,8 +351,5 @@ pub fn main() !void {
             appState.metrics.last_time += 1.0;
         }
         c.glfwSwapBuffers(appState.window);
-        // if (light_temperature <= 900) {
-        //     std.process.exit(0);
-        // }
     }
 }

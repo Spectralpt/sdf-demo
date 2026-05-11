@@ -43,8 +43,6 @@ pub const SceneManager = struct {
         self.current_state = self.registry[requested_index].init_cam_fn();
 
         self.requested_scene_index = @intCast(requested_index);
-
-        // self.current_state = .{};
     }
 };
 
@@ -55,6 +53,7 @@ pub const metrics_state = struct {
 
 pub const renderer_state = struct {
     total_accumulated_frames: u32 = 0,
+    samples_per_frame: c_int = 0,
     should_reset_accumulation: bool = false,
     want_to_save: bool = false,
     render_w: c_int = 0,
