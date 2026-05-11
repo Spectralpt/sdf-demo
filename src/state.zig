@@ -40,10 +40,11 @@ pub const SceneManager = struct {
 
         self.active_scene = try self.registry[requested_index].init_fn(self.allocator);
         self.active_index = requested_index;
+        self.current_state = self.registry[requested_index].init_cam_fn();
 
         self.requested_scene_index = @intCast(requested_index);
 
-        self.current_state = .{};
+        // self.current_state = .{};
     }
 };
 

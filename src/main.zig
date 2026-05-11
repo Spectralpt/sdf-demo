@@ -81,9 +81,21 @@ pub fn main() !void {
     defer c.glfwTerminate();
 
     const available_scenes = [_]Scene.SceneEntry{
-        .{ .metadata = try scenes.sanity.init_metadata(), .init_fn = scenes.sanity.init },
-        .{ .metadata = try scenes.scene1.init_metadata(), .init_fn = scenes.scene1.init },
-        .{ .metadata = try scenes.no_tex.init_metadata(), .init_fn = scenes.no_tex.init },
+        .{
+            .metadata = scenes.sanity.init_metadata(),
+            .init_fn = scenes.sanity.init,
+            .init_cam_fn = scenes.sanity.init_cam,
+        },
+        .{
+            .metadata = scenes.scene1.init_metadata(),
+            .init_fn = scenes.scene1.init,
+            .init_cam_fn = scenes.scene1.init_cam,
+        },
+        .{
+            .metadata = scenes.no_tex.init_metadata(),
+            .init_fn = scenes.no_tex.init,
+            .init_cam_fn = scenes.no_tex.init_cam,
+        },
     };
 
     var appState = state.app_state{
@@ -134,19 +146,6 @@ pub fn main() !void {
     defer zstbi.deinit();
 
     try appState.scenes.switchScene(0);
-
-    // const SceneInitFn = *const fn (std.mem.Allocator) anyerror!Scene.Scene;
-    // const scenes_init_fns = [_]SceneInitFn{
-    //     scenes.sanity.init,
-    //     scenes.scene1.init,
-    //     scenes.no_tex.init,
-    // };
-    // // const SceneMetadataInitFn = *const fn () anyerror!Scene.Scene_metadata;
-    // const scenes_metadata = [_]Scene.Scene_metadata{
-    //     try scenes.sanity.init_metadata(),
-    //     try scenes.scene1.init_metadata(),
-    //     try scenes.no_tex.init_metadata(),
-    // };
 
     // main (tone mapping pass)
     const vert_source = try shaders.readFileToString(allocator, "shaders/shader.vert");
@@ -228,7 +227,7 @@ pub fn main() !void {
         const current_scene = appState.scenes.active_scene;
 
         // UI
-        try ui.render(&appState, allocator);
+        try ui.render(&appState);
 
         // TODO: need to take a look at these variables
         var width: c_int = 0;
@@ -240,10 +239,6 @@ pub fn main() !void {
         // our rendering
 
         //uniforms setup
-        // FIX: this is like really bodgy i need to change the scene state to the one on the whiteboards
-        // makes a lot more sense and facilitates cases like this
-        // const current_scene_idx = @as(usize, @intCast(appState.scenes.requested_scene_index));
-        // const current_scene = &scenes_init_fns[current_scene_idx];
 
         gl.UseProgram(current_scene.?.shader_program);
         var mouse_x: f64 = undefined;
@@ -333,7 +328,7 @@ pub fn main() !void {
         gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
 
         if (appState.renderer.want_to_save) {
-            utils.saveScreenshot(allocator, win_w, win_h, rendered_frame) catch |err| {
+            utils.saveScreenshot(allocator, win_w, win_h, appState.renderer.total_accumulated_frames) catch |err| {
                 std.log.err("Failed to save screenshot: {}", .{err});
             };
             rendered_frame += 1;

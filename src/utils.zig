@@ -82,7 +82,7 @@ pub fn loadTexture(path: [:0]const u8, index: u32) !void {
 pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int, file_n: u32) !void {
     const w = @as(usize, @intCast(width));
     const h = @as(usize, @intCast(height));
-    const stride = w * 3; // 3 bytes per pixel (RGB)
+    const stride = w * 4; // 3 bytes per pixel (RGB)
     const total_size = stride * h;
 
     // 1. Allocate a buffer to hold the pixel data
@@ -91,7 +91,9 @@ pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int,
 
     // 2. Read the pixels from the currently active OpenGL Framebuffer
     // We use gl.RGB and gl.UNSIGNED_BYTE to get standard 24-bit color
-    gl.ReadPixels(0, 0, width, height, gl.RGB, gl.UNSIGNED_BYTE, pixels.ptr);
+    // gl.PixelStorei(gl.PACK_ALIGNMENT, 1); // Tell GL not to add padding
+    // gl.ReadPixels(0, 0, width, height, gl.RGB, gl.UNSIGNED_BYTE, pixels.ptr);
+    gl.ReadPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels.ptr);
 
     // 3. Flip the image vertically
     // OpenGL's (0,0) is bottom-left, but image files expect (0,0) at top-left
@@ -108,19 +110,25 @@ pub fn saveScreenshot(allocator: std.mem.Allocator, width: c_int, height: c_int,
     }
 
     // 4. Write to a PPM file
-    const filename = try std.fmt.allocPrint(allocator, "render/frame-{d:0>3}.ppm", .{file_n});
+    const filename: [:0]const u8 = try std.fmt.allocPrintSentinel(allocator, "render/frame-{d:0>3}.png", .{file_n}, 0);
     const file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
 
-    // Format the header text into a temporary stack buffer
-    var header_buf: [64]u8 = undefined;
-    const header = try std.fmt.bufPrint(&header_buf, "P6\n{} {}\n255\n", .{ w, h });
+    // 5. Map our raw pixel data into the zig-gamedev zstbi.Image struct␍
+    const image = zstbi.Image{
+        .data = pixels,
+        .width = @as(u32, @intCast(width)),
+        .height = @as(u32, @intCast(height)),
+        .num_components = 4, // RGBA
+        .bytes_per_component = 1, // 8-bit channels
+        .bytes_per_row = @as(u32, @intCast(stride)),
+        .is_hdr = false,
+    };
 
-    // Dump the header, then dump the raw pixels directly to the file!
-    try file.writeAll(header);
-    try file.writeAll(pixels);
+    // 6. Tell the struct to save itself to disk
+    try image.writeToFile(filename, .png);
 
-    std.debug.print("Screenshot saved to render.ppm!\n", .{});
+    std.debug.print("Screenshot saved to {s}!\n", .{filename});
 }
 
 // FIX: maybe look at how i should i actually do the shader program part, the scenes array would probably fix this

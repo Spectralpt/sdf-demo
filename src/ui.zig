@@ -6,7 +6,7 @@ const scene = @import("scene.zig");
 
 // TODO: maybe put frag path in appstate idk man ill figure it out
 // light temperature is also fucked gg, will fix later:tm:
-pub fn render(appState: *state.app_state, allocator: std.mem.Allocator) !void {
+pub fn render(appState: *state.app_state) !void {
     // const imgui_io = c.ImGui_GetIO();
     c.cImGui_ImplOpenGL3_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();
@@ -23,9 +23,9 @@ pub fn render(appState: *state.app_state, allocator: std.mem.Allocator) !void {
 
         // Note: In Zig, error handling in UI callbacks can be tricky.
         // We use 'catch' to prevent a crash if the disk is full.
-        utils.saveScreenshot(allocator, w, h, appState.renderer.total_accumulated_frames) catch |err| {
-            std.log.err("Failed to save screenshot: {}", .{err});
-        };
+        // utils.saveScreenshot(allocator, w, h, appState.renderer.total_accumulated_frames) catch |err| {
+        //     std.log.err("Failed to save screenshot: {}", .{err});
+        // };
     }
     const current_idx = @as(usize, @intCast(appState.scenes.requested_scene_index));
     const scene_names = appState.scenes.registry;

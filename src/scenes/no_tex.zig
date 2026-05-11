@@ -5,8 +5,17 @@ const utils = @import("../utils.zig");
 const shaders = @import("../shaders.zig");
 const std = @import("std");
 
-pub fn init_metadata() !scene.SceneMetadata {
+pub fn init_metadata() scene.SceneMetadata {
     return scene.SceneMetadata{ .name = "check1-ct" };
+}
+
+pub fn init_cam() state.scene_state {
+    return .{
+        .bound_texture_count = 0,
+        .cam_pos = .{ -54.37, -0.10, 39.99 },
+        .yaw = -1.01,
+        .pitch = 0.15,
+    };
 }
 
 pub fn init(allocator: std.mem.Allocator) !scene.Scene {
